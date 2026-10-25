@@ -2,6 +2,7 @@ import { cloneQuad, createId, createMesh, createProject, createSurface, findMedi
 import { setCorner, translateQuad } from '../core/geometry';
 import { isMeshCorner, resampleMesh, surfaceGeometry } from '../core/mesh';
 import { importMedia, loadRememberedFile, pickImageFile, pickMediaFiles, relinkMedia, rememberFile, restoreMedia, type PickedFile } from '../media/library';
+import { captureKindLabel, pickCapture, stopStream } from '../media/capture';
 import { openProjectFile, resetCurrentFile, saveProjectFile } from '../project/io';
 import { editorStore, pool, runtimeStore, setMediaStatus, toast, type EditMode } from './context';
 import * as playback from './playback';
@@ -195,7 +196,9 @@ export async function addMediaFiles(files?: PickedFile[]): Promise<void> {
 }
 
 export function deleteMedia(mediaId: string): void {
-  playback.pause(mediaId);
+  // Removing a capture ends the sharing (undo brings the entry back to be re-picked).
+  if (pool.stream(mediaId)) stopStream(pool.stream(mediaId));
+  else playback.pause(mediaId);
   state().apply((p) => removeMedia(p, mediaId));
   state().select({ mediaId: null });
 }
@@ -236,9 +239,72 @@ export async function restoreAllMedia(interactive: boolean): Promise<void> {
   }
 }
 
+// Tab/screen capture
+
+/** Keeps a capture's status and size in step with its stream. */
+function watchCapture(mediaId: string, stream: MediaStream): void {
+  stream.getVideoTracks()[0]?.addEventListener('ended', () => {
+    if (pool.stream(mediaId) === stream) setMediaStatus(mediaId, 'missing');
+  });
+  // A captured tab changes size when its window is resized.
+  pool.video(mediaId)?.addEventListener('resize', (e) => {
+    const v = e.target as HTMLVideoElement;
+    const m = findMedia(state().project, mediaId);
+    if (m && v.videoWidth && (m.width !== v.videoWidth || m.height !== v.videoHeight)) {
+      state().apply((p) => updateMedia(p, mediaId, { width: v.videoWidth, height: v.videoHeight }), { record: false });
+    }
+  });
+}
+
+async function startCapture(mediaId: string): Promise<{ stream: MediaStream; width: number; height: number } | null> {
+  const stream = await pickCapture();
+  if (!stream) return null;
+  try {
+    const size = await pool.setStream(mediaId, stream);
+    watchCapture(mediaId, stream);
+    setMediaStatus(mediaId, 'ready');
+    return { stream, ...size };
+  } catch (err) {
+    stopStream(stream);
+    throw err;
+  }
+}
+
+/** Adds a live tab/screen capture as media. */
+export async function addCapture(): Promise<void> {
+  const id = createId('capture');
+  try {
+    const started = await startCapture(id);
+    if (!started) return;
+    const label = captureKindLabel(started.stream);
+    const n = state().project.media.filter((m) => m.name.startsWith(label)).length + 1;
+    const name = `${label} ${n}`;
+    const media: Media = { id, kind: 'capture', name, width: started.width, height: started.height, loop: true };
+    state().apply((p) => ({ ...p, media: [...p.media, media] }));
+    state().select({ mediaId: id });
+    toast('캡처를 추가했습니다. 서피스에 끌어다 놓고, 필요하면 Input 뷰에서 영상 부분만 잘라 쓰세요.');
+  } catch (err) {
+    toast(errorText(err), true);
+  }
+}
+
+/** Picks a new tab/screen for an existing capture entry (after a reload or when sharing stopped). */
+export async function recapture(mediaId: string): Promise<void> {
+  const old = pool.stream(mediaId);
+  try {
+    const started = await startCapture(mediaId);
+    if (!started) return;
+    if (old !== started.stream) stopStream(old);
+    state().apply((p) => updateMedia(p, mediaId, { width: started.width, height: started.height }));
+  } catch (err) {
+    toast(errorText(err), true);
+  }
+}
+
 export async function relink(mediaId: string): Promise<void> {
   const media = findMedia(state().project, mediaId);
   if (!media) return;
+  if (media.kind === 'capture') return recapture(mediaId);
   try {
     const updated = await relinkMedia(pool, media);
     if (!updated) return;

@@ -1,5 +1,6 @@
 import { createProject, type Project } from '../core/model';
 import { SyncChannel, type TransportState } from '../core/sync';
+import { captureFromOpener, hasOpener } from '../media/capture';
 import { MediaPool } from '../media/pool';
 import { Renderer } from '../render/renderer';
 import { followTransport } from './transportSync';
@@ -26,6 +27,7 @@ sync.on((msg) => {
       project = msg.project;
       connected = true;
       for (const m of project.media) pool.setLoop(m.id, m.loop);
+      syncCaptures();
       updateHint();
       break;
     case 'media-file': {
@@ -42,6 +44,30 @@ sync.on((msg) => {
       break;
   }
 });
+
+// Captures are borrowed from the editor window. Checked on every project update and
+// periodically, because re-picking a capture swaps the stream without a project change.
+const pendingCaptures = new Set<string>();
+let captureUnavailable = false;
+
+function syncCaptures(): void {
+  const captures = project.media.filter((m) => m.kind === 'capture');
+  captureUnavailable = captures.length > 0 && !hasOpener();
+  for (const m of captures) {
+    const stream = captureFromOpener(m.id);
+    if (!stream || stream === pool.stream(m.id) || pendingCaptures.has(m.id)) continue;
+    pendingCaptures.add(m.id);
+    pool
+      .setStream(m.id, stream)
+      .catch((err) => console.error(err))
+      .finally(() => pendingCaptures.delete(m.id));
+  }
+}
+setInterval(() => {
+  const was = captureUnavailable;
+  syncCaptures();
+  if (was !== captureUnavailable) updateHint();
+}, 1000);
 
 function applyTransport(): void {
   if (!lastTransport) return;
@@ -82,10 +108,13 @@ function reportStatus(): void {
 function updateHint(): void {
   const full = !!document.fullscreenElement;
   document.body.classList.toggle('fullscreen', full);
-  hint.hidden = full;
+  hint.hidden = full && !captureUnavailable;
   hint.innerHTML = connected
     ? '<b>클릭하면 전체화면</b><span>F 키로 전환 · 이 창을 프로젝터 화면으로 옮긴 뒤 누르세요</span>'
     : '<b>컨트롤러 연결 대기 중…</b><span>편집기 창에서 “출력 창 열기”를 누르세요</span>';
+  if (captureUnavailable) {
+    hint.innerHTML += '<span class="warn">화면 캡처는 편집기의 “출력 창 열기”로 연 창에서만 보입니다</span>';
+  }
 }
 
 document.addEventListener('fullscreenchange', () => {

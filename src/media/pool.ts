@@ -15,6 +15,7 @@ export class MediaPool {
   private elements = new Map<string, TexSource>();
   private files = new Map<string, { file: File; kind: MediaKind }>();
   private urls = new Map<string, string>();
+  private streams = new Map<string, MediaStream>();
   private listeners = new Set<() => void>();
 
   constructor() {
@@ -28,6 +29,11 @@ export class MediaPool {
   video(id: string): HTMLVideoElement | undefined {
     const el = this.elements.get(id);
     return el instanceof HTMLVideoElement ? el : undefined;
+  }
+
+  /** Live capture stream behind a media id, if it is one. */
+  stream(id: string): MediaStream | undefined {
+    return this.streams.get(id);
   }
 
   file(id: string): { file: File; kind: MediaKind } | undefined {
@@ -90,6 +96,27 @@ export class MediaPool {
     return size;
   }
 
+  /**
+   * Shows a live MediaStream (tab/screen capture) under a media id. The stream may come
+   * from another window of this origin (the output window borrows the editor's).
+   */
+  async setStream(id: string, stream: MediaStream): Promise<LoadedMedia> {
+    const video = document.createElement('video');
+    video.muted = true;
+    video.playsInline = true;
+    video.srcObject = stream;
+    await new Promise<void>((resolve, reject) => {
+      video.onloadeddata = () => resolve();
+      video.onerror = () => reject(new Error('캡처 화면을 열 수 없습니다.'));
+    });
+    this.dispose(id);
+    this.elements.set(id, video);
+    this.streams.set(id, stream);
+    video.play().catch(() => {});
+    for (const l of this.listeners) l();
+    return { width: video.videoWidth, height: video.videoHeight };
+  }
+
   setLoop(id: string, loop: boolean): void {
     const v = this.video(id);
     if (v) v.loop = loop;
@@ -99,9 +126,12 @@ export class MediaPool {
     const el = this.elements.get(id);
     if (el instanceof HTMLVideoElement) {
       el.pause();
+      // The stream itself is left running: its owner decides when to stop it.
+      el.srcObject = null;
       el.removeAttribute('src');
       el.load();
     }
+    this.streams.delete(id);
     const url = this.urls.get(id);
     if (url) URL.revokeObjectURL(url);
     this.urls.delete(id);

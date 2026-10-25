@@ -50,6 +50,7 @@ export function InputView() {
         <span className="view-title">Input</span>
         <span className="view-meta">
           {media.name} · {width}×{height}
+          {media.kind === 'capture' && status === 'ready' && <em className="live"> · LIVE</em>}
           {status && status !== 'ready' && <em className="warn"> · 연결 안 됨</em>}
         </span>
       </header>

@@ -1,16 +1,21 @@
 import { mediaUsage, TESTCARD_ID } from '../core/model';
-import { addMediaFiles, assignMedia, deleteMedia, relink, restoreAllMedia } from './actions';
+import { addCapture, addMediaFiles, assignMedia, deleteMedia, relink, restoreAllMedia } from './actions';
 import { editorStore, useEditor, useRuntime, type MediaStatus } from './context';
 import { MEDIA_DRAG_TYPE } from './OutputOverlay';
 import { kindOf } from '../media/library';
 
-const KIND_ICON = { testcard: '▦', video: '▶', image: '▣' } as const;
+const KIND_ICON = { testcard: '▦', video: '▶', image: '▣', capture: '⦿' } as const;
 const STATUS_TEXT: Partial<Record<MediaStatus, string>> = {
   loading: '불러오는 중',
   'needs-permission': '권한 필요',
   missing: '파일 없음',
   error: '오류',
 };
+
+function statusText(kind: string, status: MediaStatus | undefined): string | undefined {
+  if (kind === 'capture' && status === 'missing') return '공유 꺼짐';
+  return status && STATUS_TEXT[status];
+}
 
 export function MediaBin() {
   const project = useEditor((s) => s.project);
@@ -34,6 +39,9 @@ export function MediaBin() {
     >
       <div className="panel-actions">
         <button onClick={() => void addMediaFiles()}>+ 미디어 추가</button>
+        <button onClick={() => void addCapture()} title="다른 탭이나 창, 화면을 실시간으로 가져옵니다 (예: 유튜브 재생 중인 탭)">
+          + 화면/탭 캡처
+        </button>
         <button
           disabled={!selection.mediaId || !selection.surfaceId}
           title="선택한 미디어를 선택한 서피스에 적용 (더블클릭도 가능)"
@@ -62,7 +70,7 @@ export function MediaBin() {
               <span className="name" title={m.name}>
                 {m.name}
               </span>
-              {status && STATUS_TEXT[status] && <span className="badge warn">{STATUS_TEXT[status]}</span>}
+              {statusText(m.kind, status) && <span className="badge warn">{statusText(m.kind, status)}</span>}
               {status === 'needs-permission' && (
                 <button className="small" onClick={() => void restoreAllMedia(true)}>
                   허용
@@ -70,7 +78,7 @@ export function MediaBin() {
               )}
               {(status === 'missing' || status === 'error') && (
                 <button className="small" onClick={() => void relink(m.id)}>
-                  파일 선택
+                  {m.kind === 'capture' ? '다시 선택' : '파일 선택'}
                 </button>
               )}
               <span className="badge" title="이 미디어를 쓰는 서피스 수">
@@ -93,6 +101,7 @@ export function MediaBin() {
         })}
       </ul>
       <p className="hint">파일을 여기로 끌어다 놓아도 추가됩니다. 미디어를 Output 뷰의 서피스 위에 놓으면 적용됩니다.</p>
+      <p className="hint">화면/탭 캡처는 실시간 소스라 새로 고치면 “다시 선택”으로 다시 골라야 합니다. 출력 창은 편집기의 “출력 창 열기”로 열어야 캡처가 보입니다.</p>
     </div>
   );
 }

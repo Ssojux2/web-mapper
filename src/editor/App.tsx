@@ -1,7 +1,8 @@
 import { useEffect } from 'react';
 import { addQuad, deleteSelected, duplicateSelected, newProject, openProject, restoreAllMedia, restoreReference, saveProject, toggleTestPattern } from './actions';
 import { startBridge } from './bridge';
-import { editorStore, runtimeStore, useEditor, useRuntime, type RuntimeState } from './context';
+import { exposeCaptureStreams } from '../media/capture';
+import { editorStore, pool, runtimeStore, useEditor, useRuntime, type RuntimeState } from './context';
 import { InputView } from './InputView';
 import { Inspector } from './Inspector';
 import { installShortcuts } from './keyboard';
@@ -111,6 +112,7 @@ export function App() {
   const tab = useRuntime((s) => s.leftTab);
 
   useEffect(() => {
+    exposeCaptureStreams(pool);
     const stopBridge = startBridge();
     const stopKeys = installShortcuts();
     void restoreAllMedia(false);

@@ -387,6 +387,11 @@ input[type='checkbox'] {
   color: var(--warn);
   font-style: normal;
 }
+.live {
+  color: var(--danger);
+  font-style: normal;
+  font-weight: 600;
+}
 .transport {
   display: flex;
   align-items: center;

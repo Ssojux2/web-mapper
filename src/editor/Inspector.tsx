@@ -184,7 +184,7 @@ function MediaInspector({ mediaId }: { mediaId: string }) {
       <h3>미디어 · {media.name}</h3>
       <dl className="facts">
         <dt>종류</dt>
-        <dd>{media.kind === 'video' ? '영상' : media.kind === 'image' ? '이미지' : '테스트 카드'}</dd>
+        <dd>{{ video: '영상', image: '이미지', testcard: '테스트 카드', capture: '화면 캡처 (실시간)' }[media.kind]}</dd>
         <dt>크기</dt>
         <dd>
           {width}×{height}
@@ -192,7 +192,15 @@ function MediaInspector({ mediaId }: { mediaId: string }) {
         {media.kind !== 'testcard' && (
           <>
             <dt>상태</dt>
-            <dd>{status === 'ready' ? '사용 가능' : status === 'loading' ? '불러오는 중' : '다시 연결 필요'}</dd>
+            <dd>
+              {status === 'ready'
+                ? '사용 가능'
+                : status === 'loading'
+                  ? '불러오는 중'
+                  : media.kind === 'capture'
+                    ? '공유 꺼짐 · 다시 선택 필요'
+                    : '다시 연결 필요'}
+            </dd>
           </>
         )}
       </dl>

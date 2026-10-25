@@ -39,6 +39,13 @@ describe('project JSON', () => {
     expect(p.surfaces[0].opacity).toBe(1);
   });
 
+  it('keeps capture media (live sources have no stored file)', () => {
+    const p = sampleProject();
+    p.media.push({ id: 'capture-a', kind: 'capture', name: 'YouTube 탭', width: 1280, height: 720, loop: true });
+    const back = parseProject(serializeProject(p));
+    expect(back.media.find((m) => m.id === 'capture-a')).toEqual({ id: 'capture-a', kind: 'capture', name: 'YouTube 탭', width: 1280, height: 720, loop: true, fileKey: undefined });
+  });
+
   it('rejects invalid JSON and unknown versions with a message', () => {
     expect(() => parseProject('{nope')).toThrow(/JSON/);
     expect(() => parseProject(JSON.stringify({ version: 99 }))).toThrow(/버전/);

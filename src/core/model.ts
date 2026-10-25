@@ -9,7 +9,8 @@ export interface Point {
 /** Corners in order: top-left, top-right, bottom-right, bottom-left. */
 export type Quad = [Point, Point, Point, Point];
 
-export type MediaKind = 'testcard' | 'video' | 'image';
+/** `capture` is a live tab/screen capture: session-only, re-picked after a reload. */
+export type MediaKind = 'testcard' | 'video' | 'image' | 'capture';
 
 export interface Media {
   id: string;
@@ -276,7 +277,7 @@ export function normalizeProject(raw: unknown): Project {
     .filter((m) => m && typeof m.id === 'string' && m.id !== TESTCARD_ID)
     .map((m) => ({
       id: m.id,
-      kind: m.kind === 'image' ? 'image' : 'video',
+      kind: m.kind === 'image' || m.kind === 'capture' ? m.kind : 'video',
       name: String(m.name ?? m.id),
       width: Number(m.width) || 0,
       height: Number(m.height) || 0,
