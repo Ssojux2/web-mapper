@@ -1,0 +1,40 @@
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: #000;
+  overflow: hidden;
+}
+
+#out {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+  object-fit: contain;
+}
+
+#hint {
+  position: fixed;
+  left: 50%;
+  bottom: 32px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 20px;
+  border-radius: 10px;
+  background: rgba(20, 20, 24, 0.85);
+  color: #eee;
+  font: 14px/1.4 system-ui, -apple-system, 'Segoe UI', sans-serif;
+  text-align: center;
+  pointer-events: none;
+}
+
+#hint span {
+  color: #aaa;
+  font-size: 12px;
+}
+
+body.fullscreen.idle {
+  cursor: none;
+}
