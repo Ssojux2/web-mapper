@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createProject, createSurface, updateSurface } from './model';
+import { createMesh, createProject, createSurface, updateSurface } from './model';
 import { createEditorStore } from './store';
 import { translateQuad } from './geometry';
 
@@ -70,5 +70,29 @@ describe('editor store history', () => {
     store.getState().undo();
     expect(store.getState().selection.surfaceId).toBeNull();
     expect(store.getState().selection.corner).toBeNull();
+  });
+
+  it('switching surface clears mesh point and mask selection', () => {
+    const { store, id } = setup();
+    store.getState().apply((p) => updateSurface(p, id, { mesh: createMesh(2, 2), masks: [{ id: 'm1', name: 'M', points: [{ x: 0, y: 0 }, { x: 9, y: 0 }, { x: 0, y: 9 }], invert: false, feather: 0, enabled: true }] }));
+    store.getState().select({ point: 4, maskId: 'm1', maskPoint: 1 });
+    expect(store.getState().selection).toMatchObject({ point: 4, maskId: 'm1', maskPoint: 1 });
+
+    let other = '';
+    store.getState().apply((p) => {
+      const s = createSurface(p, p.media[0]);
+      other = s.id;
+      return { ...p, surfaces: [...p.surfaces, s] };
+    });
+    store.getState().select({ surfaceId: other });
+    expect(store.getState().selection).toMatchObject({ surfaceId: other, point: null, maskId: null, maskPoint: null });
+  });
+
+  it('drops a mesh point selection when undo removes the mesh', () => {
+    const { store, id } = setup();
+    store.getState().apply((p) => updateSurface(p, id, { mesh: createMesh(2, 2) }));
+    store.getState().select({ point: 4 });
+    store.getState().undo();
+    expect(store.getState().selection.point).toBeNull();
   });
 });

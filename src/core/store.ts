@@ -9,7 +9,15 @@ export interface Selection {
   corner: number | null;
   /** Media focused in the Media Bin. */
   mediaId: string | null;
+  /** Selected mesh control point (index into mesh.offsets) of the selected surface. */
+  point: number | null;
+  /** Selected mask of the selected surface, and optionally one of its points. */
+  maskId: string | null;
+  maskPoint: number | null;
 }
+
+const EMPTY_SELECTION: Selection = { surfaceId: null, corner: null, mediaId: null, point: null, maskId: null, maskPoint: null };
+const SURFACE_PARTS = ['corner', 'point', 'maskId', 'maskPoint'] as const;
 
 export interface EditorState {
   project: Project;
@@ -38,7 +46,7 @@ export function createEditorStore(initial: Project = createProject()) {
     project: initial,
     past: [],
     future: [],
-    selection: { surfaceId: initial.surfaces[0]?.id ?? null, corner: null, mediaId: null },
+    selection: { ...EMPTY_SELECTION, surfaceId: initial.surfaces[0]?.id ?? null },
     activeView: 'output',
     gestureBase: null,
 
@@ -81,18 +89,25 @@ export function createEditorStore(initial: Project = createProject()) {
         past: [],
         future: [],
         gestureBase: null,
-        selection: { surfaceId: project.surfaces[0]?.id ?? null, corner: null, mediaId: null },
+        selection: { ...EMPTY_SELECTION, surfaceId: project.surfaces[0]?.id ?? null },
       });
     },
 
     select(patch) {
       const { project, selection } = get();
       const next = { ...selection, ...patch };
-      // Drop references to things that no longer exist (e.g. after undo).
-      if (next.surfaceId && !project.surfaces.some((s) => s.id === next.surfaceId)) {
-        next.surfaceId = null;
+      // Switching surface clears the parts that belonged to the previous one.
+      if ('surfaceId' in patch && patch.surfaceId !== selection.surfaceId) {
+        for (const k of SURFACE_PARTS) if (!(k in patch)) next[k] = null;
       }
-      if (!next.surfaceId) next.corner = null;
+      // Drop references to things that no longer exist (e.g. after undo).
+      const surface = project.surfaces.find((s) => s.id === next.surfaceId);
+      if (!surface) next.surfaceId = null;
+      if (!surface) for (const k of SURFACE_PARTS) next[k] = null;
+      if (next.point !== null && !(surface?.mesh && next.point < surface.mesh.offsets.length)) next.point = null;
+      const mask = surface?.masks.find((m) => m.id === next.maskId);
+      if (!mask) next.maskId = null;
+      if (!mask || (next.maskPoint !== null && next.maskPoint >= mask.points.length)) next.maskPoint = null;
       if (next.mediaId && !project.media.some((m) => m.id === next.mediaId)) next.mediaId = null;
       set({ selection: next });
     },

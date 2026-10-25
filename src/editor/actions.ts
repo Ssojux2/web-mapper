@@ -1,8 +1,9 @@
-import { cloneQuad, createId, createProject, createSurface, findMedia, findSurface, FULL_INPUT, moveSurface, rectQuad, removeMedia, TESTCARD_ID, updateMedia, updateSurface, type Media, type Project, type Quad } from '../core/model';
+import { cloneQuad, createId, createMesh, createProject, createSurface, findMedia, findSurface, FULL_INPUT, moveSurface, rectQuad, removeMedia, TESTCARD_ID, translateSurface, updateMask, updateMedia, updateSurface, type Mask, type Media, type Point, type Project, type Quad, type ReferenceImage, type Surface } from '../core/model';
 import { setCorner, translateQuad } from '../core/geometry';
-import { importMedia, pickMediaFiles, relinkMedia, restoreMedia, type PickedFile } from '../media/library';
+import { isMeshCorner, resampleMesh, surfaceGeometry } from '../core/mesh';
+import { importMedia, loadRememberedFile, pickImageFile, pickMediaFiles, relinkMedia, rememberFile, restoreMedia, type PickedFile } from '../media/library';
 import { openProjectFile, resetCurrentFile, saveProjectFile } from '../project/io';
-import { editorStore, pool, runtimeStore, setMediaStatus, toast } from './context';
+import { editorStore, pool, runtimeStore, setMediaStatus, toast, type EditMode } from './context';
 import * as playback from './playback';
 
 // Editor commands shared by the toolbar, panels and keyboard shortcuts.
@@ -47,12 +48,15 @@ export function addQuad(): void {
 export function duplicateSelected(): void {
   const src = selectedSurface();
   if (!src) return;
-  const copy = {
+  const moved = translateSurface(src, 24, 24);
+  const copy: Surface = {
     ...src,
     id: createId('surface'),
     name: `${src.name} 복사본`,
     input: cloneQuad(src.input),
-    output: translateQuad(src.output, 24, 24),
+    output: moved.output,
+    masks: moved.masks.map((m) => ({ ...m, id: createId('mask') })),
+    mesh: src.mesh && { ...src.mesh, offsets: src.mesh.offsets.map((o) => ({ ...o })) },
   };
   state().apply((p) => {
     const i = p.surfaces.findIndex((s) => s.id === src.id);
@@ -77,20 +81,34 @@ export function moveLayer(delta: number): void {
   if (id) state().apply((p) => moveSurface(p, id, delta));
 }
 
-/** Arrow-key nudge in the active view's units (output pixels / media pixels). */
+/**
+ * Arrow-key nudge in the active view's units (output pixels / media pixels). In the
+ * Output view it moves what the edit mode works on: a mesh point, a mask (point), or the
+ * selected corner / whole surface.
+ */
 export function nudge(dx: number, dy: number): void {
   const { project, selection, activeView } = state();
   const surface = findSurface(project, selection.surfaceId);
   if (!surface) return;
   if (activeView === 'output') {
-    const output =
-      selection.corner === null
-        ? translateQuad(surface.output, dx, dy)
-        : setCorner(surface.output, selection.corner, {
-            x: surface.output[selection.corner].x + dx,
-            y: surface.output[selection.corner].y + dy,
-          });
-    state().apply((p) => updateSurface(p, surface.id, { output }));
+    const mode = runtimeStore.getState().editMode;
+    const mask = surface.masks.find((m) => m.id === selection.maskId);
+    if (mode === 'mesh' && surface.mesh && selection.point !== null && !isMeshCorner(surface.mesh, selection.point)) {
+      moveMeshPoint(surface, selection.point, dx, dy);
+    } else if (mode === 'mask' && mask) {
+      const points = mask.points.map((p, i) =>
+        selection.maskPoint === null || selection.maskPoint === i ? { x: p.x + dx, y: p.y + dy } : p,
+      );
+      state().apply((p) => updateMask(p, surface.id, mask.id, { points }));
+    } else if (selection.corner === null) {
+      state().apply((p) => updateSurface(p, surface.id, translateSurface(surface, dx, dy)));
+    } else {
+      const output = setCorner(surface.output, selection.corner, {
+        x: surface.output[selection.corner].x + dx,
+        y: surface.output[selection.corner].y + dy,
+      });
+      state().apply((p) => updateSurface(p, surface.id, { output }));
+    }
   } else {
     const media = findMedia(project, surface.mediaId)!;
     const { width, height } = mediaSize(media);
@@ -264,4 +282,201 @@ export async function saveProject(saveAs = false): Promise<void> {
 
 export function toggleTestPattern(): void {
   state().apply((p) => ({ ...p, output: { ...p.output, testPattern: !p.output.testPattern } }));
+}
+
+export function setEditMode(editMode: EditMode): void {
+  if (editMode === 'reference' && !state().project.output.reference) {
+    toast('먼저 Output 탭에서 참조 이미지를 불러오세요.');
+    return;
+  }
+  runtimeStore.setState({ editMode });
+}
+
+/** Delete key: removes what the current edit mode has selected. */
+export function deleteInContext(): void {
+  const { selection } = state();
+  const surface = selectedSurface();
+  const mode = runtimeStore.getState().editMode;
+  if (mode === 'mask' && surface && selection.maskId) {
+    const mask = surface.masks.find((m) => m.id === selection.maskId);
+    if (mask && selection.maskPoint !== null && mask.points.length > 3) {
+      const points = mask.points.filter((_, i) => i !== selection.maskPoint);
+      state().apply((p) => updateMask(p, surface.id, mask.id, { points }));
+      state().select({ maskPoint: null });
+    } else {
+      removeMask(surface.id, selection.maskId);
+    }
+    return;
+  }
+  if (mode === 'mesh' && surface?.mesh && selection.point !== null) {
+    // A mesh point cannot be removed; Delete puts it back on the flat grid.
+    const offsets = surface.mesh.offsets.map((o, i) => (i === selection.point ? { x: 0, y: 0 } : o));
+    state().apply((p) => updateSurface(p, surface.id, { mesh: { ...surface.mesh!, offsets } }));
+    return;
+  }
+  deleteSelected();
+}
+
+// Mesh warp
+
+export function moveMeshPoint(surface: Surface, index: number, dx: number, dy: number): void {
+  const mesh = surface.mesh;
+  if (!mesh || isMeshCorner(mesh, index)) return;
+  const offsets = mesh.offsets.map((o, i) => (i === index ? { x: o.x + dx, y: o.y + dy } : o));
+  state().apply((p) => updateSurface(p, surface.id, { mesh: { ...mesh, offsets } }));
+}
+
+export function enableMesh(surfaceId: string): void {
+  state().apply((p) => updateSurface(p, surfaceId, { mesh: createMesh(4, 4) }));
+}
+
+export function removeMesh(surfaceId: string): void {
+  state().apply((p) => updateSurface(p, surfaceId, { mesh: undefined }));
+  state().select({ point: null });
+}
+
+export function setMeshSize(surfaceId: string, cols: number, rows: number): void {
+  const mesh = findSurface(state().project, surfaceId)?.mesh;
+  if (!mesh || (mesh.cols === cols && mesh.rows === rows)) return;
+  state().apply((p) => updateSurface(p, surfaceId, { mesh: resampleMesh(mesh, cols, rows) }));
+  state().select({ point: null });
+}
+
+export function setMeshSmooth(surfaceId: string, smooth: boolean): void {
+  const mesh = findSurface(state().project, surfaceId)?.mesh;
+  if (mesh) state().apply((p) => updateSurface(p, surfaceId, { mesh: { ...mesh, smooth } }));
+}
+
+export function flattenMesh(surfaceId: string): void {
+  const mesh = findSurface(state().project, surfaceId)?.mesh;
+  if (mesh) state().apply((p) => updateSurface(p, surfaceId, { mesh: createMesh(mesh.cols, mesh.rows, mesh.smooth) }));
+}
+
+// Masks
+
+/** Adds a polygon mask (output pixels) to a surface and selects it. */
+export function addMask(surfaceId: string, points: Point[]): void {
+  const surface = findSurface(state().project, surfaceId);
+  if (!surface || points.length < 3) return;
+  const mask: Mask = {
+    id: createId('mask'),
+    name: `Mask ${surface.masks.length + 1}`,
+    points: points.map((p) => ({ x: p.x, y: p.y })),
+    invert: false,
+    feather: 0,
+    enabled: true,
+  };
+  state().apply((p) => updateSurface(p, surfaceId, { masks: [...surface.masks, mask] }));
+  state().select({ maskId: mask.id, maskPoint: null });
+}
+
+/** Rectangle mask slightly inside the surface's bounds, a quick starting point. */
+export function addRectMask(surfaceId: string): void {
+  const surface = findSurface(state().project, surfaceId);
+  if (!surface) return;
+  const outline = surfaceGeometry(surface).outline;
+  const xs = outline.map((p) => p.x);
+  const ys = outline.map((p) => p.y);
+  const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  const ix = (x1 - x0) * 0.1;
+  const iy = (y1 - y0) * 0.1;
+  addMask(surfaceId, rectQuad(x0 + ix, y0 + iy, x1 - x0 - 2 * ix, y1 - y0 - 2 * iy));
+  runtimeStore.setState({ editMode: 'mask' });
+}
+
+export function setMask(surfaceId: string, maskId: string, patch: Partial<Mask>): void {
+  state().apply((p) => updateMask(p, surfaceId, maskId, patch));
+}
+
+export function removeMask(surfaceId: string, maskId: string): void {
+  const surface = findSurface(state().project, surfaceId);
+  if (!surface) return;
+  state().apply((p) => updateSurface(p, surfaceId, { masks: surface.masks.filter((m) => m.id !== maskId) }));
+  state().select({ maskId: null, maskPoint: null });
+}
+
+/** Inserts a point into a mask after index `after` and selects it. */
+export function insertMaskPoint(surfaceId: string, maskId: string, after: number, point: Point): void {
+  const mask = findSurface(state().project, surfaceId)?.masks.find((m) => m.id === maskId);
+  if (!mask) return;
+  const points = mask.points.slice();
+  points.splice(after + 1, 0, { x: point.x, y: point.y });
+  state().apply((p) => updateMask(p, surfaceId, maskId, { points }));
+  state().select({ maskId, maskPoint: after + 1 });
+}
+
+// Reference image (editor-only photo of the real scene)
+
+function setReferenceRuntime(key: string, url: string | null, status: Parameters<typeof setMediaStatus>[1]): void {
+  const prev = runtimeStore.getState().reference;
+  if (prev?.url && prev.url !== url) URL.revokeObjectURL(prev.url);
+  runtimeStore.setState({ reference: { key, url, status } });
+}
+
+function imageSize(url: string): Promise<{ width: number; height: number }> {
+  const img = new Image();
+  img.src = url;
+  return img.decode().then(() => ({ width: img.naturalWidth, height: img.naturalHeight }));
+}
+
+export async function loadReference(): Promise<void> {
+  let picked: PickedFile | null;
+  try {
+    picked = await pickImageFile();
+  } catch (err) {
+    toast(errorText(err), true);
+    return;
+  }
+  if (!picked) return;
+  const url = URL.createObjectURL(picked.file);
+  let size: { width: number; height: number };
+  try {
+    size = await imageSize(url);
+  } catch {
+    URL.revokeObjectURL(url);
+    toast(`이미지를 열 수 없습니다: ${picked.file.name}`, true);
+    return;
+  }
+  const key = createId('reference');
+  await rememberFile(key, picked);
+  setReferenceRuntime(key, url, 'ready');
+  const { width, height } = state().project.output;
+  const reference: ReferenceImage = {
+    fileKey: key,
+    name: picked.file.name,
+    width: size.width,
+    height: size.height,
+    quad: rectQuad(0, 0, width, height),
+    opacity: 0.5,
+    visible: true,
+  };
+  setReference(reference);
+  toast('참조 이미지를 불러왔습니다. “참조” 모드에서 네 코너를 끌어 실제 장면과 맞추세요.');
+}
+
+/** Loads the project's reference photo from storage if this window does not show it yet. */
+export async function restoreReference(interactive: boolean): Promise<void> {
+  const ref = state().project.output.reference;
+  if (!ref) return;
+  const current = runtimeStore.getState().reference;
+  if (current?.key === ref.fileKey && (current.status === 'ready' || current.status === 'loading')) return;
+  setReferenceRuntime(ref.fileKey, null, 'loading');
+  const file = await loadRememberedFile(ref.fileKey, interactive);
+  if (typeof file === 'string') setReferenceRuntime(ref.fileKey, null, file);
+  else setReferenceRuntime(ref.fileKey, URL.createObjectURL(file), 'ready');
+}
+
+export function setReference(reference: ReferenceImage | undefined): void {
+  state().apply((p) => ({ ...p, output: { ...p.output, reference } }));
+  if (!reference && runtimeStore.getState().editMode === 'reference') runtimeStore.setState({ editMode: 'surface' });
+}
+
+export function updateReference(patch: Partial<ReferenceImage>): void {
+  const ref = state().project.output.reference;
+  if (ref) setReference({ ...ref, ...patch });
+}
+
+export function fitReference(): void {
+  const { width, height } = state().project.output;
+  updateReference({ quad: rectQuad(0, 0, width, height) });
 }

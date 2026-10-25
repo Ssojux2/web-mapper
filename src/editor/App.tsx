@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { addQuad, deleteSelected, duplicateSelected, newProject, openProject, restoreAllMedia, saveProject, toggleTestPattern } from './actions';
+import { addQuad, deleteSelected, duplicateSelected, newProject, openProject, restoreAllMedia, restoreReference, saveProject, toggleTestPattern } from './actions';
 import { startBridge } from './bridge';
 import { editorStore, runtimeStore, useEditor, useRuntime, type RuntimeState } from './context';
 import { InputView } from './InputView';
@@ -78,12 +78,19 @@ function Toolbar() {
 
 function ReconnectBanner() {
   const statuses = useRuntime((s) => s.mediaStatus);
-  const waiting = Object.values(statuses).filter((s) => s === 'needs-permission').length;
+  const referenceWaiting = useRuntime((s) => s.reference?.status === 'needs-permission');
+  const waiting = Object.values(statuses).filter((s) => s === 'needs-permission').length + (referenceWaiting ? 1 : 0);
   if (waiting === 0) return null;
   return (
     <div className="banner">
-      저장된 미디어 {waiting}개를 다시 열려면 파일 접근을 허용해야 합니다.
-      <button className="primary" onClick={() => void restoreAllMedia(true)}>
+      저장된 파일 {waiting}개를 다시 열려면 파일 접근을 허용해야 합니다.
+      <button
+        className="primary"
+        onClick={() => {
+          void restoreAllMedia(true);
+          void restoreReference(true);
+        }}
+      >
         다시 연결
       </button>
     </div>

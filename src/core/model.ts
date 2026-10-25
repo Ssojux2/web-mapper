@@ -23,6 +23,32 @@ export interface Media {
   fileKey?: string;
 }
 
+/**
+ * Mesh warp over a quad: (cols+1)×(rows+1) control points, row-major. Each point is
+ * stored as an offset in output pixels from where the quad's perspective would put it,
+ * so dragging the corner pin keeps the warp. Corner offsets are always zero.
+ */
+export interface Mesh {
+  cols: number;
+  rows: number;
+  offsets: Point[];
+  /** Smooth (Catmull-Rom) curves between points instead of straight segments. */
+  smooth: boolean;
+}
+
+/**
+ * Polygon mask in output pixels. A normal mask shows only its inside; an inverted one
+ * hides its inside. Feather is the width of the soft edge in output pixels.
+ */
+export interface Mask {
+  id: string;
+  name: string;
+  points: Point[];
+  invert: boolean;
+  feather: number;
+  enabled: boolean;
+}
+
 export interface Surface {
   id: string;
   name: string;
@@ -34,6 +60,20 @@ export interface Surface {
   input: Quad;
   /** Where the surface lands on the output canvas, in output pixels. */
   output: Quad;
+  mesh?: Mesh;
+  masks: Mask[];
+}
+
+/** Photo of the real scene shown under the editor's Output view (never projected). */
+export interface ReferenceImage {
+  fileKey: string;
+  name: string;
+  width: number;
+  height: number;
+  /** Where the photo's corners land on the output canvas, in output pixels. */
+  quad: Quad;
+  opacity: number;
+  visible: boolean;
 }
 
 export interface OutputSettings {
@@ -42,6 +82,7 @@ export interface OutputSettings {
   testPattern: boolean;
   /** Label of the screen the output window was last opened on. */
   screenLabel?: string;
+  reference?: ReferenceImage;
 }
 
 export interface Project {
@@ -89,6 +130,7 @@ export function createSurface(project: Project, media: Media, name?: string): Su
     opacity: 1,
     input: cloneQuad(FULL_INPUT),
     output: rectQuad((ow - w) / 2, (oh - h) / 2, w, h),
+    masks: [],
   };
 }
 
@@ -137,6 +179,29 @@ export function removeMedia(project: Project, mediaId: string): Project {
   };
 }
 
+export const MAX_MESH_DIVISIONS = 32;
+
+/** A flat mesh (all offsets zero). */
+export function createMesh(cols = 4, rows = 4, smooth = true): Mesh {
+  const offsets = Array.from({ length: (cols + 1) * (rows + 1) }, () => ({ x: 0, y: 0 }));
+  return { cols, rows, offsets, smooth };
+}
+
+export function updateMask(project: Project, surfaceId: string, maskId: string, patch: Partial<Mask>): Project {
+  const s = findSurface(project, surfaceId);
+  if (!s) return project;
+  return updateSurface(project, surfaceId, { masks: s.masks.map((m) => (m.id === maskId ? { ...m, ...patch } : m)) });
+}
+
+/** Moves a whole surface; its masks travel with it. Mesh offsets are relative, so they follow. */
+export function translateSurface(s: Surface, dx: number, dy: number): Pick<Surface, 'output' | 'masks'> {
+  const move = (p: Point) => ({ x: p.x + dx, y: p.y + dy });
+  return {
+    output: s.output.map(move) as Quad,
+    masks: s.masks.map((m) => ({ ...m, points: m.points.map(move) })),
+  };
+}
+
 /** Moves a surface one step towards the front (+1) or back (-1) of the layer stack. */
 export function moveSurface(project: Project, id: string, delta: number): Project {
   const i = project.surfaces.findIndex((s) => s.id === id);
@@ -155,6 +220,46 @@ function isQuad(v: unknown): v is Quad {
   return Array.isArray(v) && v.length === 4 && v.every(isPoint);
 }
 
+function normalizeMesh(raw: unknown): Mesh | undefined {
+  if (typeof raw !== 'object' || raw === null) return undefined;
+  const m = raw as Partial<Mesh>;
+  const cols = Math.round(Number(m.cols));
+  const rows = Math.round(Number(m.rows));
+  const ok = (n: number) => Number.isInteger(n) && n >= 1 && n <= MAX_MESH_DIVISIONS;
+  if (!ok(cols) || !ok(rows)) return undefined;
+  if (!Array.isArray(m.offsets) || m.offsets.length !== (cols + 1) * (rows + 1) || !m.offsets.every(isPoint)) return undefined;
+  return { cols, rows, smooth: m.smooth !== false, offsets: m.offsets.map((p) => ({ x: p.x, y: p.y })) };
+}
+
+function normalizeMasks(raw: unknown): Mask[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((m) => m && Array.isArray(m.points) && m.points.length >= 3 && m.points.every(isPoint))
+    .map((m, i) => ({
+      id: typeof m.id === 'string' ? m.id : createId('mask'),
+      name: String(m.name ?? `Mask ${i + 1}`),
+      points: m.points.map((p: Point) => ({ x: p.x, y: p.y })),
+      invert: Boolean(m.invert),
+      feather: Math.max(0, Number(m.feather) || 0),
+      enabled: m.enabled !== false,
+    }));
+}
+
+function normalizeReference(raw: unknown): ReferenceImage | undefined {
+  if (typeof raw !== 'object' || raw === null) return undefined;
+  const r = raw as Partial<ReferenceImage>;
+  if (typeof r.fileKey !== 'string' || !isQuad(r.quad)) return undefined;
+  return {
+    fileKey: r.fileKey,
+    name: String(r.name ?? 'reference'),
+    width: Number(r.width) || 1,
+    height: Number(r.height) || 1,
+    quad: cloneQuad(r.quad),
+    opacity: Math.min(1, Math.max(0, Number.isFinite(r.opacity) ? Number(r.opacity) : 0.5)),
+    visible: r.visible !== false,
+  };
+}
+
 /** Validates parsed JSON and fills in defaults. Throws with a readable message on bad input. */
 export function normalizeProject(raw: unknown): Project {
   if (typeof raw !== 'object' || raw === null) throw new Error('프로젝트 파일 형식이 아닙니다.');
@@ -165,6 +270,7 @@ export function normalizeProject(raw: unknown): Project {
     height: Number(r.output?.height) || 1080,
     testPattern: Boolean(r.output?.testPattern),
     screenLabel: r.output?.screenLabel,
+    reference: normalizeReference(r.output?.reference),
   };
   const media: Media[] = (Array.isArray(r.media) ? r.media : [])
     .filter((m) => m && typeof m.id === 'string' && m.id !== TESTCARD_ID)
@@ -190,6 +296,8 @@ export function normalizeProject(raw: unknown): Project {
       opacity: Math.min(1, Math.max(0, Number.isFinite(s.opacity) ? s.opacity : 1)),
       input: cloneQuad(s.input),
       output: cloneQuad(s.output),
+      mesh: normalizeMesh(s.mesh),
+      masks: normalizeMasks(s.masks),
     }));
   return { version: PROJECT_VERSION, output, media, surfaces };
 }

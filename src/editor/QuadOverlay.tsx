@@ -21,17 +21,15 @@ interface Props {
   /** Called on every pointer move of a drag with the quad at drag start and the pointer delta. */
   onDrag(id: string, corner: number | null, base: Quad, delta: Point): void;
   onSelect(id: string | null, corner: number | null): void;
-  onDropMedia?(surfaceId: string, mediaId: string): void;
 }
 
 const CORNER_LABELS = ['1', '2', '3', '4'];
-export const MEDIA_DRAG_TYPE = 'application/x-mapper-media';
 
 /**
- * SVG layer over a view: outlines, corner handles and the pointer logic for selecting,
+ * SVG layer over the Input view: outlines, corner handles and the pointer logic for selecting,
  * moving a whole quad or dragging one corner. One drag = one undo step.
  */
-export function QuadOverlay({ width, height, items, selectedId, selectedCorner, onDrag, onSelect, onDropMedia }: Props) {
+export function QuadOverlay({ width, height, items, selectedId, selectedCorner, onDrag, onSelect }: Props) {
   const svg = useRef<SVGSVGElement>(null);
   const scale = useViewScale();
   const px = 1 / scale; // one screen pixel in content units
@@ -88,27 +86,6 @@ export function QuadOverlay({ width, height, items, selectedId, selectedCorner, 
     el.addEventListener('pointercancel', up);
   };
 
-  const onDragOver = (e: React.DragEvent) => {
-    if (onDropMedia && e.dataTransfer.types.includes(MEDIA_DRAG_TYPE)) {
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'link';
-    }
-  };
-
-  const onDrop = (e: React.DragEvent) => {
-    const mediaId = e.dataTransfer.getData(MEDIA_DRAG_TYPE);
-    if (!onDropMedia || !mediaId) return;
-    e.preventDefault();
-    const p = contentPoint(e, svg.current!, width, height);
-    for (let i = items.length - 1; i >= 0; i--) {
-      if (!items[i].hidden && pointInQuad(p, items[i].quad)) {
-        onDropMedia(items[i].id, mediaId);
-        onSelect(items[i].id, null);
-        return;
-      }
-    }
-  };
-
   const fontSize = 12 * px;
 
   return (
@@ -119,8 +96,6 @@ export function QuadOverlay({ width, height, items, selectedId, selectedCorner, 
       width={width}
       height={height}
       onPointerDown={onPointerDown}
-      onDragOver={onDragOver}
-      onDrop={onDrop}
     >
       <rect x={0} y={0} width={width} height={height} className="frame" strokeWidth={px} />
       {items.map((item) => {

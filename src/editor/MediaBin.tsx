@@ -1,7 +1,7 @@
 import { mediaUsage, TESTCARD_ID } from '../core/model';
 import { addMediaFiles, assignMedia, deleteMedia, relink, restoreAllMedia } from './actions';
 import { editorStore, useEditor, useRuntime, type MediaStatus } from './context';
-import { MEDIA_DRAG_TYPE } from './QuadOverlay';
+import { MEDIA_DRAG_TYPE } from './OutputOverlay';
 import { kindOf } from '../media/library';
 
 const KIND_ICON = { testcard: '▦', video: '▶', image: '▣' } as const;

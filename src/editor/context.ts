@@ -18,6 +18,8 @@ export function useEditor<T>(selector: (s: EditorState) => T): T {
 
 export type MediaStatus = 'ready' | 'loading' | 'needs-permission' | 'missing' | 'error';
 
+export type EditMode = 'surface' | 'mesh' | 'mask' | 'reference';
+
 export interface OutputStatus {
   fullscreen: boolean;
   width: number;
@@ -31,6 +33,10 @@ export interface RuntimeState {
   screens: ScreenOption[];
   screenIndex: number;
   leftTab: 'media' | 'surfaces' | 'output';
+  /** What pointer drags edit in the Output view. */
+  editMode: EditMode;
+  /** Loaded reference photo (editor only); `key` is the ReferenceImage.fileKey it shows. */
+  reference: { key: string; url: string | null; status: MediaStatus } | null;
   toast: { text: string; error: boolean; id: number } | null;
 }
 
@@ -40,6 +46,8 @@ export const runtimeStore = createStore<RuntimeState>()(() => ({
   screens: [],
   screenIndex: -1,
   leftTab: 'surfaces',
+  editMode: 'surface',
+  reference: null,
   toast: null,
 }));
 

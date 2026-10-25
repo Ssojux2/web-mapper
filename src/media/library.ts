@@ -11,6 +11,10 @@ export interface PickedFile {
   handle?: FileSystemFileHandle;
 }
 
+const IMAGE_TYPES: FilePickerAcceptType[] = [
+  { description: '이미지', accept: { 'image/*': ['.png', '.jpg', '.jpeg', '.webp'] } },
+];
+
 const MEDIA_TYPES: FilePickerAcceptType[] = [
   {
     description: '영상·이미지',
@@ -29,18 +33,27 @@ export function kindOf(file: File): MediaKind | null {
   return null;
 }
 
-/** Opens the system file picker. Resolves to [] if the user cancels. */
-export async function pickMediaFiles(multiple = true): Promise<PickedFile[]> {
+async function pick(types: FilePickerAcceptType[], accept: string, multiple: boolean, id: string): Promise<PickedFile[]> {
   if (window.showOpenFilePicker) {
     try {
-      const handles = await window.showOpenFilePicker({ multiple, types: MEDIA_TYPES, id: 'mapper-media' });
+      const handles = await window.showOpenFilePicker({ multiple, types, id });
       return Promise.all(handles.map(async (handle) => ({ file: await handle.getFile(), handle })));
     } catch (err) {
       if ((err as DOMException).name === 'AbortError') return [];
       throw err;
     }
   }
-  return pickWithInput('video/*,image/*', multiple).then((files) => files.map((file) => ({ file })));
+  return pickWithInput(accept, multiple).then((files) => files.map((file) => ({ file })));
+}
+
+/** Opens the system file picker. Resolves to [] if the user cancels. */
+export function pickMediaFiles(multiple = true): Promise<PickedFile[]> {
+  return pick(MEDIA_TYPES, 'video/*,image/*', multiple, 'mapper-media');
+}
+
+export async function pickImageFile(): Promise<PickedFile | null> {
+  const [picked] = await pick(IMAGE_TYPES, 'image/*', false, 'mapper-reference');
+  return picked ?? null;
 }
 
 export function pickWithInput(accept: string, multiple: boolean): Promise<File[]> {
@@ -61,41 +74,48 @@ export async function importMedia(pool: MediaPool, picked: PickedFile, id = crea
   if (!kind) throw new Error(`지원하지 않는 파일입니다: ${picked.file.name}`);
   const size = await pool.setFile(id, picked.file, kind);
   const fileKey = id;
-  try {
-    await putFile(fileKey, picked.handle ? { handle: picked.handle } : { file: picked.file });
-  } catch (err) {
-    // Quota or a browser that cannot store handles: the media still works this session.
-    console.warn('미디어를 저장하지 못했습니다', err);
-  }
+  await rememberFile(fileKey, picked);
   return { id, kind, name: picked.file.name, width: size.width, height: size.height, loop: true, fileKey };
+}
+
+/** Persists a picked file under `key`: its handle where possible, else a stored copy. */
+export async function rememberFile(key: string, picked: PickedFile): Promise<void> {
+  try {
+    await putFile(key, picked.handle ? { handle: picked.handle } : { file: picked.file });
+  } catch (err) {
+    // Quota or a browser that cannot store handles: the file still works this session.
+    console.warn('파일을 저장하지 못했습니다', err);
+  }
 }
 
 export type RestoreResult = 'ready' | 'needs-permission' | 'missing';
 
 /**
- * Restores a saved media item into the pool. With `interactive` (inside a click
- * handler) it may show the browser's permission prompt for a stored file handle.
+ * Reads back a remembered file. With `interactive` (inside a click handler) it may show
+ * the browser's permission prompt for a stored file handle.
  */
+export async function loadRememberedFile(key: string, interactive: boolean): Promise<File | Exclude<RestoreResult, 'ready'>> {
+  const stored = await getFile(key).catch(() => undefined);
+  if (!stored) return 'missing';
+  if (!('handle' in stored)) return stored.file;
+  const handle = stored.handle;
+  let state = (await handle.queryPermission?.({ mode: 'read' })) ?? 'granted';
+  if (state !== 'granted' && interactive && handle.requestPermission) {
+    state = await handle.requestPermission({ mode: 'read' });
+  }
+  if (state !== 'granted') return 'needs-permission';
+  try {
+    return await handle.getFile();
+  } catch {
+    return 'missing';
+  }
+}
+
+/** Restores a saved media item into the pool (see loadRememberedFile for `interactive`). */
 export async function restoreMedia(pool: MediaPool, media: Media, interactive: boolean): Promise<RestoreResult> {
   if (!media.fileKey || media.kind === 'testcard') return 'missing';
-  const stored = await getFile(media.fileKey).catch(() => undefined);
-  if (!stored) return 'missing';
-  let file: File;
-  if ('handle' in stored) {
-    const handle = stored.handle;
-    let state = (await handle.queryPermission?.({ mode: 'read' })) ?? 'granted';
-    if (state !== 'granted' && interactive && handle.requestPermission) {
-      state = await handle.requestPermission({ mode: 'read' });
-    }
-    if (state !== 'granted') return 'needs-permission';
-    try {
-      file = await handle.getFile();
-    } catch {
-      return 'missing';
-    }
-  } else {
-    file = stored.file;
-  }
+  const file = await loadRememberedFile(media.fileKey, interactive);
+  if (typeof file === 'string') return file;
   await pool.setFile(media.id, file, media.kind, media.loop);
   return 'ready';
 }

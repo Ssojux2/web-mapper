@@ -1,7 +1,7 @@
-import { findMedia, findSurface, updateSurface } from '../core/model';
+import { findMedia, findSurface, MAX_MESH_DIVISIONS, updateSurface, type Surface } from '../core/model';
 import { setCorner } from '../core/geometry';
-import { mediaSize, resetInput, setLoop, squareOutput } from './actions';
-import { editorStore, useEditor, useRuntime } from './context';
+import { addRectMask, enableMesh, flattenMesh, mediaSize, removeMask, removeMesh, resetInput, setEditMode, setLoop, setMask, setMeshSize, setMeshSmooth, squareOutput } from './actions';
+import { editorStore, runtimeStore, useEditor, useRuntime } from './context';
 import { NumberField } from './NumberField';
 
 const CORNER_NAMES = ['1 좌상', '2 우상', '3 우하', '4 좌하'];
@@ -60,6 +60,115 @@ function SurfaceInspector({ surfaceId }: { surfaceId: string }) {
         <button onClick={() => resetInput(surface.id)} title="입력 영역을 미디어 전체로 되돌립니다">
           입력 전체로
         </button>
+      </div>
+      <MeshSection surface={surface} />
+      <MaskSection surface={surface} />
+    </div>
+  );
+}
+
+function MeshSection({ surface }: { surface: Surface }) {
+  const mesh = surface.mesh;
+  if (!mesh) {
+    return (
+      <div className="inspector-section">
+        <h4>메시 워프</h4>
+        <p className="hint">곡면에 맞추려면 격자를 켜고 “메시” 모드에서 점을 끌어 주세요.</p>
+        <button
+          onClick={() => {
+            enableMesh(surface.id);
+            setEditMode('mesh');
+          }}
+        >
+          메시 켜기 (4×4)
+        </button>
+      </div>
+    );
+  }
+  const clamp = (n: number) => Math.min(MAX_MESH_DIVISIONS, Math.max(1, Math.round(n)));
+  return (
+    <div className="inspector-section">
+      <h4>메시 워프</h4>
+      <div className="field-row">
+        <NumberField label="가로" value={mesh.cols} min={1} max={MAX_MESH_DIVISIONS} onCommit={(c) => setMeshSize(surface.id, clamp(c), mesh.rows)} />
+        <NumberField label="세로" value={mesh.rows} min={1} max={MAX_MESH_DIVISIONS} onCommit={(r) => setMeshSize(surface.id, mesh.cols, clamp(r))} />
+      </div>
+      <label className="check">
+        <input type="checkbox" checked={mesh.smooth} onChange={(e) => setMeshSmooth(surface.id, e.target.checked)} />
+        부드러운 곡선
+      </label>
+      <div className="field-row">
+        <button onClick={() => setEditMode('mesh')}>점 편집</button>
+        <button onClick={() => flattenMesh(surface.id)} title="모든 점을 원래 격자로 되돌립니다">
+          평평하게
+        </button>
+        <button onClick={() => removeMesh(surface.id)}>메시 끄기</button>
+      </div>
+    </div>
+  );
+}
+
+function MaskSection({ surface }: { surface: Surface }) {
+  const selectedMask = useEditor((s) => s.selection.maskId);
+  const selectMask = (maskId: string) => {
+    editorStore.getState().select({ maskId, maskPoint: null });
+    runtimeStore.setState({ editMode: 'mask' });
+  };
+  return (
+    <div className="inspector-section">
+      <h4>마스크</h4>
+      {surface.masks.length === 0 && <p className="hint">마스크가 없으면 서피스 전체가 보입니다.</p>}
+      <ul className="list mask-list">
+        {surface.masks.map((m) => (
+          <li key={m.id} className={`row${m.id === selectedMask ? ' selected' : ''}${m.enabled ? '' : ' dim'}`} onClick={() => selectMask(m.id)}>
+            <input
+              type="checkbox"
+              title="사용"
+              checked={m.enabled}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => setMask(surface.id, m.id, { enabled: e.target.checked })}
+            />
+            <span className="name">{m.name}</span>
+            <button
+              className={`small${m.invert ? ' on' : ''}`}
+              title="반전: 안쪽을 가립니다"
+              onClick={(e) => {
+                e.stopPropagation();
+                setMask(surface.id, m.id, { invert: !m.invert });
+              }}
+            >
+              {m.invert ? '가림' : '보임'}
+            </button>
+            <button
+              className="icon small"
+              title="마스크 삭제"
+              onClick={(e) => {
+                e.stopPropagation();
+                removeMask(surface.id, m.id);
+              }}
+            >
+              ✕
+            </button>
+          </li>
+        ))}
+      </ul>
+      {surface.masks
+        .filter((m) => m.id === selectedMask)
+        .map((m) => (
+          <div key={m.id} className="field-row">
+            <NumberField label="페더(px)" value={m.feather} min={0} max={500} onCommit={(feather) => setMask(surface.id, m.id, { feather })} />
+          </div>
+        ))}
+      <div className="field-row">
+        <button
+          onClick={() => {
+            editorStore.getState().select({ maskId: null, maskPoint: null });
+            setEditMode('mask');
+          }}
+        >
+          + 그리기
+        </button>
+        <button onClick={() => addRectMask(surface.id)}>+ 사각형</button>
       </div>
     </div>
   );

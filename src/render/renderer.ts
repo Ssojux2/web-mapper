@@ -1,10 +1,21 @@
 import * as twgl from 'twgl.js';
-import { multiply, pixelsToClip, squareToQuad, toGL } from '../core/geometry';
-import type { Project } from '../core/model';
+import { pixelsToClip, squareToQuad, toGL } from '../core/geometry';
+import { surfaceGeometry } from '../core/mesh';
+import type { Project, Surface } from '../core/model';
+import { MaskCache } from './masks';
 import { fullscreenVert, surfaceFrag, surfaceVert, testPatternFrag } from './shaders';
 import { TextureCache, type TexSource } from './videoTextures';
 
 export type SourceLookup = (mediaId: string) => TexSource | undefined;
+
+interface GpuGeometry {
+  surface: Surface;
+  vao: WebGLVertexArrayObject;
+  position: WebGLBuffer;
+  st: WebGLBuffer;
+  index: WebGLBuffer;
+  count: number;
+}
 
 /**
  * Draws a project's surfaces onto a canvas. The canvas may be smaller than the output
@@ -14,9 +25,11 @@ export class Renderer {
   readonly gl: WebGL2RenderingContext;
   private surfaceProgram: twgl.ProgramInfo;
   private patternProgram: twgl.ProgramInfo;
-  private quad: twgl.VertexArrayInfo;
   private fullscreen: twgl.VertexArrayInfo;
+  private geometries = new Map<string, GpuGeometry>();
+  private white: WebGLTexture;
   readonly textures: TextureCache;
+  readonly masks: MaskCache;
 
   constructor(readonly canvas: HTMLCanvasElement) {
     const gl = canvas.getContext('webgl2', { antialias: true, alpha: false, premultipliedAlpha: true });
@@ -24,16 +37,14 @@ export class Renderer {
     this.gl = gl;
     this.surfaceProgram = twgl.createProgramInfo(gl, [surfaceVert, surfaceFrag]);
     this.patternProgram = twgl.createProgramInfo(gl, [fullscreenVert, testPatternFrag]);
-    // Unit square as two triangles; corners match the Quad order TL, TR, BR, BL.
-    const quadBuffer = twgl.createBufferInfoFromArrays(gl, {
-      a_st: { numComponents: 2, data: [0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1] },
-    });
-    this.quad = twgl.createVertexArrayInfo(gl, this.surfaceProgram, quadBuffer);
     const fsBuffer = twgl.createBufferInfoFromArrays(gl, {
       a_pos: { numComponents: 2, data: [-1, -1, 3, -1, -1, 3] },
     });
     this.fullscreen = twgl.createVertexArrayInfo(gl, this.patternProgram, fsBuffer);
+    // Full coverage, used for surfaces without masks.
+    this.white = twgl.createTexture(gl, { src: [255, 255, 255, 255], width: 1, height: 1 });
     this.textures = new TextureCache(gl);
+    this.masks = new MaskCache(gl);
   }
 
   /** Sets the canvas backing size, keeping the output aspect and at most `maxWidth` pixels wide. */
@@ -64,8 +75,7 @@ export class Renderer {
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
     gl.useProgram(this.surfaceProgram.program);
-    twgl.setBuffersAndAttributes(gl, this.surfaceProgram, this.quad);
-    const clip = pixelsToClip(width, height);
+    const clip = toGL(pixelsToClip(width, height));
 
     for (const surface of project.surfaces) {
       if (!surface.visible || surface.opacity <= 0) continue;
@@ -73,14 +83,70 @@ export class Renderer {
       if (!source) continue;
       const tex = this.textures.get(surface.mediaId, source);
       if (!tex) continue;
+      const mask = this.masks.get(surface, width, height) ?? this.white;
+      const geometry = this.geometry(surface);
       twgl.setUniforms(this.surfaceProgram, {
-        u_output: toGL(multiply(clip, squareToQuad(surface.output))),
+        u_clip: clip,
         u_input: toGL(squareToQuad(surface.input)),
         u_tex: tex,
+        u_mask: mask,
+        u_canvas: [this.canvas.width, this.canvas.height],
         u_opacity: surface.opacity,
       });
-      twgl.drawBufferInfo(gl, this.quad);
+      gl.bindVertexArray(geometry.vao);
+      gl.drawElements(gl.TRIANGLES, geometry.count, gl.UNSIGNED_SHORT, 0);
     }
+    gl.bindVertexArray(null);
+
+    const ids = new Set(project.surfaces.map((s) => s.id));
+    this.masks.retain(ids);
+    for (const [id, g] of this.geometries) if (!ids.has(id)) this.releaseGeometry(id, g);
+  }
+
+  /** GPU buffers for a surface, re-uploaded only when the surface object changed. */
+  private geometry(surface: Surface): GpuGeometry {
+    const gl = this.gl;
+    let g = this.geometries.get(surface.id);
+    if (g && g.surface === surface) return g;
+    if (!g) {
+      const vao = gl.createVertexArray()!;
+      const position = gl.createBuffer()!;
+      const st = gl.createBuffer()!;
+      const index = gl.createBuffer()!;
+      gl.bindVertexArray(vao);
+      const program = this.surfaceProgram.program;
+      const posLoc = gl.getAttribLocation(program, 'a_pos');
+      gl.bindBuffer(gl.ARRAY_BUFFER, position);
+      gl.enableVertexAttribArray(posLoc);
+      gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, 0, 0);
+      const stLoc = gl.getAttribLocation(program, 'a_st');
+      gl.bindBuffer(gl.ARRAY_BUFFER, st);
+      gl.enableVertexAttribArray(stLoc);
+      gl.vertexAttribPointer(stLoc, 2, gl.FLOAT, false, 0, 0);
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, index);
+      g = { surface, vao, position, st, index, count: 0 };
+      this.geometries.set(surface.id, g);
+    }
+    const data = surfaceGeometry(surface);
+    gl.bindVertexArray(g.vao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, g.position);
+    gl.bufferData(gl.ARRAY_BUFFER, data.positions, gl.DYNAMIC_DRAW);
+    gl.bindBuffer(gl.ARRAY_BUFFER, g.st);
+    gl.bufferData(gl.ARRAY_BUFFER, data.st, gl.DYNAMIC_DRAW);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, g.index);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, data.indices, gl.DYNAMIC_DRAW);
+    g.surface = surface;
+    g.count = data.indices.length;
+    return g;
+  }
+
+  private releaseGeometry(id: string, g: GpuGeometry): void {
+    const gl = this.gl;
+    gl.deleteVertexArray(g.vao);
+    gl.deleteBuffer(g.position);
+    gl.deleteBuffer(g.st);
+    gl.deleteBuffer(g.index);
+    this.geometries.delete(id);
   }
 
   /** Renders and reads back one pixel (output coordinates). Debug/testing aid. */
@@ -92,8 +158,10 @@ export class Renderer {
     return [px[0], px[1], px[2], px[3]];
   }
 
-  /** Frees GPU textures. The context itself stays usable, so a canvas can get a new Renderer. */
+  /** Frees GPU resources. The context itself stays usable, so a canvas can get a new Renderer. */
   dispose(): void {
     this.textures.dispose();
+    this.masks.dispose();
+    for (const [id, g] of this.geometries) this.releaseGeometry(id, g);
   }
 }

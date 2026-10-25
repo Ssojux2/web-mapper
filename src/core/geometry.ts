@@ -116,3 +116,9 @@ export function quadCenter(q: Quad): Point {
 export function distance(a: Point, b: Point): number {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
+
+/** CSS matrix3d() for a 2D projective map, so an element can be corner-pinned in the DOM. */
+export function toCssMatrix3d(m: Mat3): string {
+  const [a, b, c, d, e, f, g, h, i] = m;
+  return `matrix3d(${[a, d, 0, g, b, e, 0, h, 0, 0, 1, 0, c, f, 0, i].join(',')})`;
+}

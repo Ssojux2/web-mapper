@@ -1,5 +1,6 @@
 import { closeOutputWindow, listScreens, openOutputWindow, supportsScreenPlacement } from '../output/screens';
 import { NumberField } from './NumberField';
+import { fitReference, loadReference, restoreReference, setEditMode, setReference, updateReference } from './actions';
 import { editorStore, runtimeStore, toast, useEditor, useRuntime } from './context';
 
 const PRESETS: [number, number][] = [
@@ -19,6 +20,8 @@ export function OutputPanel() {
   const screens = useRuntime((s) => s.screens);
   const screenIndex = useRuntime((s) => s.screenIndex);
   const status = useRuntime((s) => s.output);
+  const reference = output.reference;
+  const referenceStatus = useRuntime((s) => (s.reference?.key === reference?.fileKey ? s.reference?.status : undefined));
   const target = screens[screenIndex];
 
   const loadScreens = async () => {
@@ -108,6 +111,56 @@ export function OutputPanel() {
       </div>
       <p className={`status-line${status ? ' ok' : ''}`}>
         {status ? (status.fullscreen ? '● 출력 중 (전체화면)' : '● 연결됨 · 출력 창을 클릭하면 전체화면') : '○ 출력 창 없음'}
+      </p>
+
+      <h3>참조 이미지</h3>
+      {reference ? (
+        <>
+          <div className="field-row">
+            <span className="ref-name" title={reference.name}>
+              {reference.name}
+            </span>
+            {referenceStatus === 'needs-permission' && (
+              <button className="small" onClick={() => void restoreReference(true)}>
+                허용
+              </button>
+            )}
+            {referenceStatus === 'missing' && <span className="badge warn">파일 없음</span>}
+          </div>
+          <label className="field">
+            <span>불투명도</span>
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.01}
+              value={reference.opacity}
+              onPointerDown={() => editorStore.getState().beginGesture()}
+              onPointerUp={() => editorStore.getState().endGesture()}
+              onChange={(e) => updateReference({ opacity: Number(e.target.value) })}
+            />
+            <span className="value">{Math.round(reference.opacity * 100)}%</span>
+          </label>
+          <label className="check">
+            <input type="checkbox" checked={reference.visible} onChange={(e) => updateReference({ visible: e.target.checked })} />
+            보이기
+          </label>
+          <div className="field-row">
+            <button onClick={() => setEditMode('reference')} title="R">
+              코너 맞추기
+            </button>
+            <button onClick={fitReference}>출력 전체로</button>
+            <button onClick={() => void loadReference()}>바꾸기</button>
+            <button className="icon" title="참조 이미지 제거" onClick={() => setReference(undefined)}>
+              ✕
+            </button>
+          </div>
+        </>
+      ) : (
+        <button onClick={() => void loadReference()}>참조 이미지 불러오기</button>
+      )}
+      <p className="hint">
+        프로젝터 자리에서 찍은 사진을 깔고 마스크를 따라 그립니다. 테스트 패턴을 켠 채로 찍으면, 사진 속 격자 테두리가 출력 테두리와 맞도록 코너를 끌어 정렬할 수 있습니다. 편집기에만 보이고 출력 창에는 나가지 않습니다.
       </p>
 
       <h3>보조</h3>

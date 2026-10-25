@@ -288,6 +288,7 @@ input[type='checkbox'] {
 .number-field span {
   color: var(--muted);
   font-size: 11px;
+  white-space: nowrap;
 }
 .number-field input {
   width: 100%;
@@ -314,7 +315,7 @@ input[type='checkbox'] {
 .inspector {
   border-top: 1px solid var(--line);
   padding: 10px 8px;
-  max-height: 55%;
+  max-height: 62%;
   overflow: auto;
 }
 .facts {
@@ -504,4 +505,143 @@ input[type='checkbox'] {
 .toast.error {
   border-color: rgba(255, 90, 90, 0.6);
   color: #ffb3b3;
+}
+
+/* Output edit modes */
+.mode-switch {
+  display: flex;
+  margin-left: auto;
+  flex-shrink: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.mode-switch button {
+  border: none;
+  border-radius: 0;
+  padding: 3px 9px;
+  background: transparent;
+  color: var(--muted);
+}
+.mode-switch button + button {
+  border-left: 1px solid var(--line);
+}
+.mode-switch button.active {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+.mode-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  min-height: 28px;
+  padding: 4px 10px;
+  background: #19191e;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.reference-image {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  pointer-events: none;
+  user-select: none;
+}
+
+.mesh polyline {
+  fill: none;
+  stroke: rgba(120, 220, 255, 0.55);
+  pointer-events: none;
+}
+.mesh-point {
+  fill: rgba(20, 20, 24, 0.85);
+  stroke: #78dcff;
+  cursor: crosshair;
+}
+.mesh-point.active {
+  fill: #78dcff;
+}
+
+.mask polygon {
+  fill: rgba(80, 230, 160, 0.05);
+  stroke: rgba(80, 230, 160, 0.55);
+  stroke-dasharray: 5 4;
+  pointer-events: none;
+}
+.mask.invert polygon {
+  fill: rgba(255, 90, 90, 0.08);
+  stroke: rgba(255, 110, 110, 0.6);
+}
+.mask.disabled polygon {
+  stroke: rgba(150, 150, 160, 0.4);
+  fill: none;
+}
+.masks:not(.active) polygon {
+  stroke-opacity: 0.45;
+}
+.mask.selected polygon {
+  stroke-dasharray: none;
+  stroke: #50e6a0;
+}
+.mask.invert.selected polygon {
+  stroke: #ff6e6e;
+}
+.mask-point {
+  fill: rgba(20, 20, 24, 0.85);
+  stroke: #50e6a0;
+  cursor: crosshair;
+}
+.mask.invert .mask-point {
+  stroke: #ff6e6e;
+}
+.mask-point.active {
+  fill: #50e6a0;
+}
+.mask-draft polyline {
+  fill: none;
+  stroke: #50e6a0;
+  stroke-dasharray: 4 3;
+  pointer-events: none;
+}
+.mask-draft circle {
+  fill: rgba(20, 20, 24, 0.9);
+  stroke: #50e6a0;
+  pointer-events: none;
+}
+.mask-draft circle.first {
+  fill: #50e6a0;
+}
+.quad-overlay.mode-mask,
+.quad-overlay.drawing {
+  cursor: crosshair;
+}
+
+.reference-handles polygon {
+  fill: none;
+  stroke: #c58bff;
+  pointer-events: none;
+}
+.reference-handles .handle circle {
+  stroke: #c58bff;
+}
+.reference-handles .handle text {
+  fill: #c58bff;
+}
+
+.mask-list .row {
+  padding: 3px 4px;
+}
+.ref-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.inspector-section + .inspector-section {
+  margin-top: 4px;
 }

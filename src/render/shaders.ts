@@ -1,14 +1,16 @@
-// The output-side homography goes into gl_Position as a homogeneous coordinate, so the
-// GPU's perspective-correct interpolation hands every fragment the exact unit-square
-// coordinate (no seam along the quad diagonal). The input-side homography is applied
-// per fragment, which keeps a trapezoid input region correct as well.
+// Surface vertices arrive as homogeneous output positions (x·w, y·w, w), built on the
+// CPU from the corner-pin homography plus any mesh-warp offset. Passing w through to
+// gl_Position makes the GPU interpolate the unit-square coordinate perspective-correctly
+// (no seam along triangle diagonals). The input-side homography is applied per
+// fragment, which keeps a trapezoid input region correct as well.
 
 export const surfaceVert = `#version 300 es
+in vec3 a_pos;
 in vec2 a_st;
-uniform mat3 u_output;
+uniform mat3 u_clip;
 out vec2 v_st;
 void main() {
-  vec3 p = u_output * vec3(a_st, 1.0);
+  vec3 p = u_clip * a_pos;
   v_st = a_st;
   gl_Position = vec4(p.xy, 0.0, p.z);
 }
@@ -19,14 +21,17 @@ precision highp float;
 in vec2 v_st;
 uniform mat3 u_input;
 uniform sampler2D u_tex;
+uniform sampler2D u_mask;   // coverage in alpha, covering the whole output frame
+uniform vec2 u_canvas;      // canvas size in pixels
 uniform float u_opacity;
 out vec4 outColor;
 void main() {
   vec3 q = u_input * vec3(v_st, 1.0);
   vec2 uv = q.xy / q.z;
   if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) discard;
-  // Textures are uploaded premultiplied, so opacity scales all four channels.
-  outColor = texture(u_tex, uv) * u_opacity;
+  float mask = texture(u_mask, vec2(gl_FragCoord.x / u_canvas.x, 1.0 - gl_FragCoord.y / u_canvas.y)).a;
+  // Textures are uploaded premultiplied, so opacity and mask scale all four channels.
+  outColor = texture(u_tex, uv) * (u_opacity * mask);
 }
 `;
 

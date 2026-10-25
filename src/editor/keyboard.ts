@@ -1,4 +1,4 @@
-import { addQuad, cycleCorner, deleteSelected, duplicateSelected, focusedMediaId, moveLayer, nudge, openProject, saveProject, toggleTestPattern, togglePlay } from './actions';
+import { addQuad, cycleCorner, deleteInContext, duplicateSelected, focusedMediaId, moveLayer, nudge, openProject, saveProject, setEditMode, toggleTestPattern, togglePlay } from './actions';
 import { editorStore } from './context';
 import { FIT_EVENT } from './Viewport';
 
@@ -56,11 +56,15 @@ export function installShortcuts(): () => void {
       e.preventDefault();
       cycleCorner(e.shiftKey ? -1 : 1);
     } else if (e.key === 'Escape') {
-      if (store.selection.corner !== null) store.select({ corner: null });
+      const sel = store.selection;
+      if (sel.maskPoint !== null) store.select({ maskPoint: null });
+      else if (sel.maskId !== null) store.select({ maskId: null });
+      else if (sel.point !== null) store.select({ point: null });
+      else if (sel.corner !== null) store.select({ corner: null });
       else store.select({ surfaceId: null });
     } else if ((e.key === 'Delete' || e.key === 'Backspace') && !mod) {
       e.preventDefault();
-      deleteSelected();
+      deleteInContext();
     } else if (e.key === ' ' && !mod) {
       e.preventDefault();
       togglePlay(focusedMediaId());
@@ -68,6 +72,8 @@ export function installShortcuts(): () => void {
       addQuad();
     } else if (key === 't' && !mod) {
       toggleTestPattern();
+    } else if (!mod && (key === 'v' || key === 'w' || key === 'm' || key === 'r')) {
+      setEditMode(({ v: 'surface', w: 'mesh', m: 'mask', r: 'reference' } as const)[key]);
     }
   };
   window.addEventListener('keydown', onKey);
