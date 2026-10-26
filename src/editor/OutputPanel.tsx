@@ -112,6 +112,7 @@ export function OutputPanel() {
       <p className={`status-line${status ? ' ok' : ''}`}>
         {status ? (status.fullscreen ? '● 출력 중 (전체화면)' : '● 연결됨 · 출력 창을 클릭하면 전체화면') : '○ 출력 창 없음'}
       </p>
+      <p className="hint">출력 창의 안내문과 커서는 마우스를 멈추면 사라집니다. 캡처를 쓸 때 탭을 공유하면 Chrome의 공유 바가 출력에도 보이니, ‘창’으로 공유하세요.</p>
 
       <h3>참조 이미지</h3>
       {reference ? (

@@ -1,7 +1,8 @@
 import { findMedia, findSurface, MAX_MESH_DIVISIONS, updateSurface, type Surface } from '../core/model';
 import { setCorner } from '../core/geometry';
-import { addRectMask, enableMesh, flattenMesh, mediaSize, removeMask, removeMesh, resetInput, setEditMode, setLoop, setMask, setMeshSize, setMeshSmooth, squareOutput } from './actions';
-import { editorStore, runtimeStore, useEditor, useRuntime } from './context';
+import { addRectMask, enableMesh, flattenMesh, mediaSize, recapture, removeMask, removeMesh, resetInput, setEditMode, setLoop, setMask, setMeshSize, setMeshSmooth, squareOutput, TAB_CAPTURE_WARNING } from './actions';
+import { editorStore, pool, runtimeStore, useEditor, useRuntime } from './context';
+import { isTabCapture } from '../media/capture';
 import { NumberField } from './NumberField';
 
 const CORNER_NAMES = ['1 좌상', '2 우상', '3 우하', '4 좌하'];
@@ -204,6 +205,12 @@ function MediaInspector({ mediaId }: { mediaId: string }) {
           </>
         )}
       </dl>
+      {media.kind === 'capture' && status === 'ready' && isTabCapture(pool.stream(media.id)) && (
+        <div className="capture-warning">
+          <p>{TAB_CAPTURE_WARNING}</p>
+          <button onClick={() => void recapture(media.id)}>창으로 다시 선택</button>
+        </div>
+      )}
       {media.kind === 'video' && (
         <label className="check">
           <input type="checkbox" checked={media.loop} onChange={(e) => setLoop(media.id, e.target.checked)} />

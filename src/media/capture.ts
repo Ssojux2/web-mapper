@@ -13,13 +13,16 @@ export async function pickCapture(): Promise<MediaStream | null> {
   if (!navigator.mediaDevices?.getDisplayMedia) {
     throw new Error('이 브라우저는 화면 캡처를 지원하지 않습니다.');
   }
-  // Chrome-only hints: prefer tabs, keep this editor tab out of the list (it would
-  // capture itself), and let the user switch the shared tab while it runs.
+  // Chrome-only hints. Windows come first: sharing a *tab* makes Chrome pin a
+  // "Sharing … / Stop sharing" bar to every tab of every window, the output window
+  // included, even in fullscreen; window/screen capture shows only a hideable notice.
+  // The editor tab stays out of the list (it would capture itself), and switching the
+  // shared tab mid-show is off so a stray click cannot swap what is projected.
   const options = {
-    video: { frameRate: { ideal: 60 }, displaySurface: 'browser' },
+    video: { frameRate: { ideal: 60 }, displaySurface: 'window' },
     audio: false,
     selfBrowserSurface: 'exclude',
-    surfaceSwitching: 'include',
+    surfaceSwitching: 'exclude',
   } as DisplayMediaStreamOptions;
   try {
     return await navigator.mediaDevices.getDisplayMedia(options);
@@ -29,10 +32,19 @@ export async function pickCapture(): Promise<MediaStream | null> {
   }
 }
 
+function displaySurface(stream: MediaStream): string | undefined {
+  return (stream.getVideoTracks()[0]?.getSettings() as { displaySurface?: string } | undefined)?.displaySurface;
+}
+
 /** "탭 캡처" / "창 캡처" / "화면 캡처". Track labels are internal ids, so the surface type names it. */
 export function captureKindLabel(stream: MediaStream): string {
-  const surface = (stream.getVideoTracks()[0]?.getSettings() as { displaySurface?: string } | undefined)?.displaySurface;
+  const surface = displaySurface(stream);
   return surface === 'browser' ? '탭 캡처' : surface === 'window' ? '창 캡처' : '화면 캡처';
+}
+
+/** A shared tab, which puts Chrome's sharing bar on the output window too. */
+export function isTabCapture(stream: MediaStream | undefined): boolean {
+  return !!stream && displaySurface(stream) === 'browser';
 }
 
 export function stopStream(stream: MediaStream | undefined): void {

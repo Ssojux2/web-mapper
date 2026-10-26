@@ -2,7 +2,7 @@ import { cloneQuad, createId, createMesh, createProject, createSurface, findMedi
 import { setCorner, translateQuad } from '../core/geometry';
 import { isMeshCorner, resampleMesh, surfaceGeometry } from '../core/mesh';
 import { importMedia, loadRememberedFile, pickImageFile, pickMediaFiles, relinkMedia, rememberFile, restoreMedia, type PickedFile } from '../media/library';
-import { captureKindLabel, pickCapture, stopStream } from '../media/capture';
+import { captureKindLabel, isTabCapture, pickCapture, stopStream } from '../media/capture';
 import { openProjectFile, resetCurrentFile, saveProjectFile } from '../project/io';
 import { editorStore, pool, runtimeStore, setMediaStatus, toast, type EditMode } from './context';
 import * as playback from './playback';
@@ -241,6 +241,9 @@ export async function restoreAllMedia(interactive: boolean): Promise<void> {
 
 // Tab/screen capture
 
+export const TAB_CAPTURE_WARNING =
+  '탭을 공유하면 Chrome이 출력 창에도 공유 바를 띄웁니다. 영상만 내보내려면 ‘창’에서 유튜브 창을 고르세요.';
+
 /** Keeps a capture's status and size in step with its stream. */
 function watchCapture(mediaId: string, stream: MediaStream): void {
   stream.getVideoTracks()[0]?.addEventListener('ended', () => {
@@ -282,7 +285,8 @@ export async function addCapture(): Promise<void> {
     const media: Media = { id, kind: 'capture', name, width: started.width, height: started.height, loop: true };
     state().apply((p) => ({ ...p, media: [...p.media, media] }));
     state().select({ mediaId: id });
-    toast('캡처를 추가했습니다. 서피스에 끌어다 놓고, 필요하면 Input 뷰에서 영상 부분만 잘라 쓰세요.');
+    if (isTabCapture(started.stream)) toast(TAB_CAPTURE_WARNING, true);
+    else toast('캡처를 추가했습니다. 서피스에 끌어다 놓고, Input 뷰에서 창 테두리를 잘라 영상 부분만 쓰세요.');
   } catch (err) {
     toast(errorText(err), true);
   }
@@ -295,7 +299,12 @@ export async function recapture(mediaId: string): Promise<void> {
     const started = await startCapture(mediaId);
     if (!started) return;
     if (old !== started.stream) stopStream(old);
-    state().apply((p) => updateMedia(p, mediaId, { width: started.width, height: started.height }));
+    // An auto-generated name ("탭 캡처 1") follows the new kind; a custom one is kept.
+    const current = findMedia(state().project, mediaId)?.name ?? '';
+    const auto = /^(탭|창|화면) 캡처 (\d+)$/.exec(current);
+    const name = auto ? `${captureKindLabel(started.stream)} ${auto[2]}` : current;
+    state().apply((p) => updateMedia(p, mediaId, { name, width: started.width, height: started.height }));
+    if (isTabCapture(started.stream)) toast(TAB_CAPTURE_WARNING, true);
   } catch (err) {
     toast(errorText(err), true);
   }

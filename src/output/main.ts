@@ -106,12 +106,16 @@ function reportStatus(): void {
   });
 }
 
+// The hint never stays on the projected image: hidden in fullscreen, and otherwise
+// only shown while the mouse moves (it fades out after a short rest).
+let idle = false;
+
 function updateHint(): void {
   const full = !!document.fullscreenElement;
   document.body.classList.toggle('fullscreen', full);
-  hint.hidden = full && !captureUnavailable;
+  hint.classList.toggle('hide', full || idle);
   hint.innerHTML = connected
-    ? '<b>클릭하면 전체화면</b><span>F 키로 전환 · 이 창을 프로젝터 화면으로 옮긴 뒤 누르세요</span>'
+    ? '<b>클릭하면 전체화면 (F)</b><span>이 창을 프로젝터 화면으로 옮긴 뒤 누르세요 · 마우스를 멈추면 안내가 사라집니다</span>'
     : '<b>컨트롤러 연결 대기 중…</b><span>편집기 창에서 “출력 창 열기”를 누르세요</span>';
   if (captureUnavailable) {
     hint.innerHTML += '<span class="warn">화면 캡처는 편집기의 “출력 창 열기”로 연 창에서만 보입니다</span>';
@@ -124,16 +128,26 @@ document.addEventListener('fullscreenchange', () => {
 });
 window.addEventListener('beforeunload', () => sync.post({ type: 'output-closed' }));
 
-// Hide the cursor when the mouse rests, like a dedicated output.
+// When the mouse rests, hide the cursor and the hint, like a dedicated output.
 let idleTimer = 0;
-document.addEventListener('mousemove', () => {
-  document.body.classList.remove('idle');
+function wake(): void {
+  if (idle) {
+    idle = false;
+    document.body.classList.remove('idle');
+    updateHint();
+  }
   clearTimeout(idleTimer);
-  idleTimer = window.setTimeout(() => document.body.classList.add('idle'), 2000);
-});
+  idleTimer = window.setTimeout(() => {
+    idle = true;
+    document.body.classList.add('idle');
+    updateHint();
+  }, 2500);
+}
+document.addEventListener('mousemove', wake);
 
 registerServiceWorker();
 updateHint();
+wake();
 sync.post({ type: 'hello' });
 reportStatus();
 

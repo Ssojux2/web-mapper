@@ -28,6 +28,14 @@ body {
   font: 14px/1.4 system-ui, -apple-system, 'Segoe UI', sans-serif;
   text-align: center;
   pointer-events: none;
+  transition: opacity 0.4s;
+}
+
+/* A class, not the hidden attribute: `display: flex` above would override [hidden]. */
+#hint.hide {
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.4s, visibility 0s 0.4s;
 }
 
 #hint span {
@@ -39,6 +47,6 @@ body {
   color: #ffc542;
 }
 
-body.fullscreen.idle {
+body.idle {
   cursor: none;
 }

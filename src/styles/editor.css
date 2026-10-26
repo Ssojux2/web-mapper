@@ -650,3 +650,16 @@ input[type='checkbox'] {
 .inspector-section + .inspector-section {
   margin-top: 4px;
 }
+
+.capture-warning {
+  margin: 8px 0;
+  padding: 8px;
+  border: 1px solid rgba(255, 197, 66, 0.35);
+  border-radius: 6px;
+  background: rgba(255, 197, 66, 0.08);
+  color: var(--warn);
+  font-size: 12px;
+}
+.capture-warning p {
+  margin: 0 0 6px;
+}

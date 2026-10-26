@@ -39,8 +39,8 @@ export function MediaBin() {
     >
       <div className="panel-actions">
         <button onClick={() => void addMediaFiles()}>+ 미디어 추가</button>
-        <button onClick={() => void addCapture()} title="다른 탭이나 창, 화면을 실시간으로 가져옵니다 (예: 유튜브 재생 중인 탭)">
-          + 화면/탭 캡처
+        <button onClick={() => void addCapture()} title="다른 창이나 화면을 실시간으로 가져옵니다. 유튜브를 별도 창(가능하면 전체화면 플레이어)으로 열고 그 창을 고르세요.">
+          + 창/화면 캡처
         </button>
         <button
           disabled={!selection.mediaId || !selection.surfaceId}
@@ -101,7 +101,9 @@ export function MediaBin() {
         })}
       </ul>
       <p className="hint">파일을 여기로 끌어다 놓아도 추가됩니다. 미디어를 Output 뷰의 서피스 위에 놓으면 적용됩니다.</p>
-      <p className="hint">화면/탭 캡처는 실시간 소스라 새로 고치면 “다시 선택”으로 다시 골라야 합니다. 출력 창은 편집기의 “출력 창 열기”로 열어야 캡처가 보입니다.</p>
+      <p className="hint">
+        캡처는 ‘창’으로 고르세요. 탭을 고르면 Chrome이 출력 창에도 공유 바를 띄웁니다. 창 테두리는 Input 뷰에서 잘라 내고, Chrome의 공유 알림은 ‘숨기기’로 내리면 됩니다. 실시간 소스라 새로 고치면 “다시 선택”이 필요하고, 출력 창은 “출력 창 열기”로 열어야 캡처가 보입니다.
+      </p>
     </div>
   );
 }
