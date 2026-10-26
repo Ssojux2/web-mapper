@@ -2,6 +2,7 @@ import { createProject, type Project } from '../core/model';
 import { SyncChannel, type TransportState } from '../core/sync';
 import { captureFromOpener, hasOpener } from '../media/capture';
 import { MediaPool } from '../media/pool';
+import { registerServiceWorker } from '../pwa';
 import { Renderer } from '../render/renderer';
 import { followTransport } from './transportSync';
 
@@ -131,6 +132,7 @@ document.addEventListener('mousemove', () => {
   idleTimer = window.setTimeout(() => document.body.classList.add('idle'), 2000);
 });
 
+registerServiceWorker();
 updateHint();
 sync.post({ type: 'hello' });
 reportStatus();

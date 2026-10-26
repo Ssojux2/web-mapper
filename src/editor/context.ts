@@ -38,6 +38,8 @@ export interface RuntimeState {
   /** Loaded reference photo (editor only); `key` is the ReferenceImage.fileKey it shows. */
   reference: { key: string; url: string | null; status: MediaStatus } | null;
   toast: { text: string; error: boolean; id: number } | null;
+  /** The browser offers installing this page as an app. */
+  installable: boolean;
 }
 
 export const runtimeStore = createStore<RuntimeState>()(() => ({
@@ -49,6 +51,7 @@ export const runtimeStore = createStore<RuntimeState>()(() => ({
   editMode: 'surface',
   reference: null,
   toast: null,
+  installable: false,
 }));
 
 export function useRuntime<T>(selector: (s: RuntimeState) => T): T {

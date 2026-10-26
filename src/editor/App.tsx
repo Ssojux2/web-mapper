@@ -2,7 +2,8 @@ import { useEffect } from 'react';
 import { addQuad, deleteSelected, duplicateSelected, newProject, openProject, restoreAllMedia, restoreReference, saveProject, toggleTestPattern } from './actions';
 import { startBridge } from './bridge';
 import { exposeCaptureStreams } from '../media/capture';
-import { editorStore, pool, runtimeStore, useEditor, useRuntime, type RuntimeState } from './context';
+import { promptInstall, registerServiceWorker, watchInstallPrompt } from '../pwa';
+import { editorStore, pool, runtimeStore, toast, useEditor, useRuntime, type RuntimeState } from './context';
 import { InputView } from './InputView';
 import { Inspector } from './Inspector';
 import { installShortcuts } from './keyboard';
@@ -25,6 +26,7 @@ function Toolbar() {
   const hasSelection = useEditor((s) => !!s.selection.surfaceId);
   const testPattern = useEditor((s) => s.project.output.testPattern);
   const output = useRuntime((s) => s.output);
+  const installable = useRuntime((s) => s.installable);
   const store = editorStore.getState();
 
   return (
@@ -72,6 +74,14 @@ function Toolbar() {
           {output ? (output.fullscreen ? '● 출력 중' : '● 출력 창') : '출력 창 열기'}
         </button>
       </div>
+      {installable && (
+        <button
+          title="바탕화면·Dock에 아이콘을 만들고 별도 창으로 실행합니다. 인터넷 없이도 열립니다."
+          onClick={() => void promptInstall().then((ok) => ok && runtimeStore.setState({ installable: false }))}
+        >
+          ⤓ 앱 설치
+        </button>
+      )}
       <span className="file-name">{currentFileName()}</span>
     </header>
   );
@@ -110,6 +120,11 @@ function Toast() {
 
 export function App() {
   const tab = useRuntime((s) => s.leftTab);
+
+  useEffect(() => {
+    registerServiceWorker(() => toast('새 버전이 준비됐습니다. 새로 고치면 적용됩니다.'));
+    watchInstallPrompt((installable) => runtimeStore.setState({ installable }));
+  }, []);
 
   useEffect(() => {
     exposeCaptureStreams(pool);

@@ -2,14 +2,15 @@
 
 브라우저에서 영상을 실물에 프로젝션 맵핑하는 프로그램입니다. MadMapper의 비디오 맵핑 기능 중 핵심만 먼저 구현했습니다.
 
-## 실행
+## 바로 쓰기
 
-```bash
-npm install
-npm run dev
-```
+설치할 것이 없습니다. Chrome 또는 Edge(맥·윈도우)에서 아래 주소를 엽니다.
 
-Chrome 또는 Edge에서 http://localhost:5173 을 엽니다(맥·윈도우 모두 됩니다).
+**https://ssojux2.github.io/web-mapper/**
+
+앱처럼 쓰려면 편집기 위쪽의 `⤓ 앱 설치` 버튼(또는 주소창 오른쪽의 설치 아이콘)을 누릅니다. 바탕화면·Dock에 아이콘이 생기고 별도 창으로 열립니다. 한 번 연 뒤에는 인터넷이 없는 공연장에서도 실행됩니다. 새 버전이 배포되면 다음에 열 때 자동으로 반영됩니다.
+
+작업한 프로젝트와 미디어는 그 컴퓨터의 브라우저에만 저장됩니다. 다른 컴퓨터로 옮기려면 `저장`으로 `.mapper.json` 파일을 내보내고, 미디어 파일과 함께 가져가세요.
 
 ## 사용 순서
 
@@ -74,8 +75,24 @@ Output 뷰 위쪽의 편집 모드로 전환합니다.
 - `src/editor`: 편집기 UI(React)
 - `src/output`: 출력 창, 화면 배치, 재생 동기화
 
+## 개발
+
 ```bash
+npm install
+npm run dev     # http://localhost:5173
 npm test        # 단위 테스트
 npm run lint
 npm run build
 ```
+
+`main`에 push하면 GitHub Actions가 테스트·빌드 후 GitHub Pages에 배포합니다(`.github/workflows/deploy.yml`).
+
+## 라이선스
+
+[PolyForm Noncommercial License 1.0.0](LICENSE)을 따릅니다. 아래는 이해를 돕기 위한 요약이며, 실제 조건은 [LICENSE](LICENSE) 원문이 우선합니다.
+
+- **자유롭게 쓸 수 있는 경우 (비상업적 이용)**: 개인 작업·취미·학습·연구, 그리고 학교·공공 연구기관·공공기관·비영리 단체의 이용. 수정과 재배포도 같은 조건으로 됩니다.
+- **허락이 필요한 경우 (상업적 이용)**: 유료 공연·전시·행사, 광고·홍보 영상, 클라이언트 작업, 이 소프트웨어를 쓴 유료 서비스나 제품 등 영리 목적의 이용. 저작권자가 별도로 허락한 곳만 쓸 수 있습니다.
+- **상업적 이용 문의**: [GitHub 이슈](https://github.com/Ssojux2/web-mapper/issues)로 사용 목적과 기간을 적어 요청해 주세요.
+
+Copyright (c) 2026 Ssojux2
