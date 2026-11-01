@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { DesktopOutputStatus, MapperDesktopApi } from '../src/desktop/api';
+import type { CaptureChange, DesktopOutputStatus, MapperDesktopApi } from '../src/desktop/api';
 import { IPC } from './lib/channels';
 
 // Runs sandboxed in every app window and exposes the small `window.mapperDesktop` API.
@@ -22,7 +22,13 @@ const api: MapperDesktopApi = {
   capture: {
     sources: () => ipcRenderer.invoke(IPC.captureSources),
     select: (mediaId, sourceId) => ipcRenderer.invoke(IPC.captureSelect, mediaId, sourceId),
+    arm: (mediaId) => ipcRenderer.invoke(IPC.captureArm, mediaId),
     lookup: (mediaId) => ipcRenderer.invoke(IPC.captureLookup, mediaId),
+    onChanged(cb) {
+      const listener = (_e: Electron.IpcRendererEvent, change: CaptureChange) => cb(change);
+      ipcRenderer.on(IPC.captureChanged, listener);
+      return () => ipcRenderer.off(IPC.captureChanged, listener);
+    },
     permission: () => ipcRenderer.invoke(IPC.capturePermission),
     openSettings: () => ipcRenderer.invoke(IPC.captureOpenSettings),
   },

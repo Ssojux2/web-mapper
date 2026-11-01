@@ -112,12 +112,16 @@ export function hasOpener(): boolean {
   }
 }
 
-/** Output side, desktop app: the source the editor picked for `mediaId` (it changes on re-pick). */
+/** Output side, desktop app: the source `mediaId` captures now (it changes on re-pick and fullscreen). */
 export async function lookupDesktopCapture(mediaId: string): Promise<string | null> {
   return desktop ? desktop.capture.lookup(mediaId) : null;
 }
 
-/** Output side, desktop app: this window's own stream of that source. */
-export function captureDesktopSource(mediaId: string, sourceId: string): Promise<MediaStream> {
-  return desktopDisplayMedia(mediaId, sourceId);
+/**
+ * Desktop app: a new stream of the media's current source (the pick, or the screen a
+ * picked window fills in fullscreen). The output window's own copy uses this too.
+ */
+export async function captureCurrentSource(mediaId: string): Promise<MediaStream> {
+  if (!(await desktop!.capture.arm(mediaId))) throw new Error('캡처 소스를 찾을 수 없습니다. 다시 선택하세요.');
+  return navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 60 } }, audio: false });
 }

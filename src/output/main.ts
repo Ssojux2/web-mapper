@@ -1,7 +1,7 @@
 import { createProject, type Project } from '../core/model';
 import { SyncChannel, type TransportState } from '../core/sync';
 import { desktop } from '../desktop';
-import { captureDesktopSource, captureFromOpener, hasOpener, lookupDesktopCapture, stopStream } from '../media/capture';
+import { captureCurrentSource, captureFromOpener, hasOpener, lookupDesktopCapture, stopStream } from '../media/capture';
 import { MediaPool } from '../media/pool';
 import { registerServiceWorker } from '../pwa';
 import { Renderer } from '../render/renderer';
@@ -92,7 +92,7 @@ async function syncDesktopCaptures(): Promise<void> {
       const live = current?.getVideoTracks()[0]?.readyState === 'live';
       if (!sourceId || (sourceId === desktopSources.get(id) && live) || failedSources.get(id) === sourceId) continue;
       try {
-        const stream = await captureDesktopSource(id, sourceId);
+        const stream = await captureCurrentSource(id);
         await pool.setStream(id, stream);
         stopStream(current);
         desktopSources.set(id, sourceId);

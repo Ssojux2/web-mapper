@@ -7,7 +7,9 @@ export const IPC = {
   outputStatus: 'output:status',
   captureSources: 'capture:sources',
   captureSelect: 'capture:select',
+  captureArm: 'capture:arm',
   captureLookup: 'capture:lookup',
+  captureChanged: 'capture:changed',
   capturePermission: 'capture:permission',
   captureOpenSettings: 'capture:openSettings',
 } as const;

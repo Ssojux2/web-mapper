@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { addQuad, deleteSelected, duplicateSelected, loadScreens, newProject, openProject, restoreAllMedia, restoreReference, saveProject, toggleTestPattern } from './actions';
+import { addQuad, deleteSelected, duplicateSelected, loadScreens, watchDesktopCaptures, newProject, openProject, restoreAllMedia, restoreReference, saveProject, toggleTestPattern } from './actions';
 import { CapturePicker } from './CapturePicker';
 import { isDesktop } from '../desktop';
 import { startBridge } from './bridge';
@@ -133,10 +133,12 @@ export function App() {
     // The app lists displays without a permission prompt, so the list is ready up front.
     if (isDesktop) void loadScreens(false);
     const stopBridge = startBridge();
+    const stopCaptureWatch = watchDesktopCaptures();
     const stopKeys = installShortcuts();
     void restoreAllMedia(false);
     return () => {
       stopBridge();
+      stopCaptureWatch();
       stopKeys();
     };
   }, []);

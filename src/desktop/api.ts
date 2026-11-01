@@ -30,6 +30,13 @@ export interface DesktopOutputStatus {
   height: number;
 }
 
+export interface CaptureChange {
+  mediaId: string;
+  sourceId: string;
+  /** The picked window fills a screen, which is captured instead. */
+  fullscreen: boolean;
+}
+
 export interface MapperDesktopApi {
   platform: string;
   /** Started with --smoke-test: the renderer exposes its test hooks. */
@@ -51,8 +58,15 @@ export interface MapperDesktopApi {
      * this window to capture it.
      */
     select(mediaId: string, sourceId: string): Promise<void>;
-    /** The source picked for a media item, so the output window can capture it too. */
+    /** Arms the media's current source for this window's next getDisplayMedia() call. */
+    arm(mediaId: string): Promise<boolean>;
+    /** The source a media item captures now, so the output window can capture it too. */
     lookup(mediaId: string): Promise<string | null>;
+    /**
+     * The source of a media item changed without a new pick: a picked window went
+     * fullscreen (its screen is captured instead) or came back.
+     */
+    onChanged(cb: (change: CaptureChange) => void): () => void;
     permission(): Promise<ScreenPermission>;
     openSettings(): Promise<void>;
   };

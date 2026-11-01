@@ -2,7 +2,8 @@ import { activeLayer, cloneQuad, createId, createLayer, createMesh, createProjec
 import { setCorner, translateQuad } from '../core/geometry';
 import { isMeshCorner, resampleMesh, surfaceGeometry } from '../core/mesh';
 import { importMedia, loadRememberedFile, pickImageFile, pickMediaFiles, relinkMedia, rememberFile, restoreMedia, type PickedFile } from '../media/library';
-import { captureKindLabel, isTabCapture, pickCapture, stopStream } from '../media/capture';
+import { captureCurrentSource, captureKindLabel, isTabCapture, pickCapture, stopStream } from '../media/capture';
+import { desktop } from '../desktop';
 import { openProjectFile, resetCurrentFile, saveProjectFile } from '../project/io';
 import { listScreens } from '../output/screens';
 import { editorStore, pool, runtimeStore, setMediaStatus, toast, type EditMode } from './context';
@@ -334,6 +335,27 @@ async function startCapture(mediaId: string): Promise<{ stream: MediaStream; wid
     stopStream(stream);
     throw err;
   }
+}
+
+/**
+ * Desktop app: when a captured window goes fullscreen, the main process switches the
+ * media to the screen it fills (and back afterwards); capture the new source here too.
+ */
+export function watchDesktopCaptures(): () => void {
+  if (!desktop) return () => {};
+  return desktop.capture.onChanged(async ({ mediaId, fullscreen }) => {
+    const old = pool.stream(mediaId);
+    try {
+      const stream = await captureCurrentSource(mediaId);
+      await pool.setStream(mediaId, stream);
+      watchCapture(mediaId, stream);
+      setMediaStatus(mediaId, 'ready');
+      stopStream(old);
+      toast(fullscreen ? '캡처하던 창이 전체화면이 되어 그 화면을 캡처합니다.' : '전체화면이 끝나 다시 창을 캡처합니다.');
+    } catch (err) {
+      toast(errorText(err), true);
+    }
+  });
 }
 
 /** Adds a live tab/screen capture as media. */

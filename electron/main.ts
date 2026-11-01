@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { DisplayInfo } from '../src/desktop/api';
-import { forgetWindow, installDisplayMediaHandler, listSources, lookupSource, openScreenSettings, screenPermission, selectSource } from './capture';
+import { armSource, forgetWindow, installDisplayMediaHandler, listSources, lookupSource, openScreenSettings, screenPermission, selectSource } from './capture';
 import { IPC } from './lib/channels';
 import { resolveAppPath } from './lib/paths';
 import { closeOutput, onDisplaysChanged, openOutput, outputStatus, setOutputFullscreen } from './output-window';
@@ -95,6 +95,7 @@ function registerIpc(): void {
   ipcMain.handle(IPC.outputStatus, () => outputStatus());
   ipcMain.handle(IPC.captureSources, () => listSources());
   ipcMain.handle(IPC.captureSelect, (e, mediaId: string, sourceId: string) => selectSource(e.sender.id, mediaId, sourceId));
+  ipcMain.handle(IPC.captureArm, (e, mediaId: string) => armSource(e.sender.id, mediaId));
   ipcMain.handle(IPC.captureLookup, (_e, mediaId: string) => lookupSource(mediaId));
   ipcMain.handle(IPC.capturePermission, () => screenPermission());
   ipcMain.handle(IPC.captureOpenSettings, () => openScreenSettings());

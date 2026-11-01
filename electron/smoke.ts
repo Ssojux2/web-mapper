@@ -1,6 +1,6 @@
-import { app, screen, type BrowserWindow, type WebPreferences } from 'electron';
+import { app, BrowserWindow, screen, type WebPreferences } from 'electron';
 import { writeFileSync } from 'node:fs';
-import { listSources, screenPermission } from './capture';
+import { listSources, lookupSource, screenPermission } from './capture';
 import { closeOutput, onDisplaysChanged, openOutput, outputStatus, outputWindow, setOutputFullscreen } from './output-window';
 
 // `--smoke-test[=result.json]`: drives the real app through its main paths, writes a JSON
@@ -240,6 +240,44 @@ export async function runSmokeTest(
     await until(async () => (await js<string>(out, outputTrack)) === 'ended', 10_000, 'output capture stopped');
     await js(editor, `window.__mapper.pool.stream('smoke-capture')?.getTracks().forEach((t) => t.stop())`);
     return { ok: track.state === 'live', detail: { ...detail, track, output: 'live, then stopped' } };
+  });
+
+  // A captured window that goes fullscreen is swapped for the screen it fills (macOS
+  // captures fullscreen windows with a broken frame), in the editor and the output.
+  await check('fullscreen-window-capture', async () => {
+    if (process.platform !== 'darwin' || screenPermission() !== 'granted') return { ok: 'skipped', detail: 'macOS with screen recording only' };
+    const out = outputWindow();
+    if (!out) return { ok: false, detail: 'no output window' };
+    const outDisplay = screen.getDisplayMatching(out.getBounds());
+    const other = screen.getAllDisplays().find((d) => d.id !== outDisplay.id);
+    if (!other) return { ok: 'skipped', detail: 'needs a second display' };
+    const target = new BrowserWindow({ x: other.workArea.x + 60, y: other.workArea.y + 60, width: 800, height: 450, title: 'smoke-target' });
+    try {
+      await target.loadURL('data:text/html,<body style="margin:0;height:100vh;background:linear-gradient(90deg,red,lime 50%25,blue)">');
+      const windowSource = target.getMediaSourceId();
+      await js(
+        editor,
+        `(async () => { const { pool, editorStore } = window.__mapper; const id = 'fs-capture';
+          await window.mapperDesktop.capture.select(id, ${JSON.stringify(windowSource)});
+          const size = await pool.setStream(id, await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false }));
+          editorStore.getState().apply((p) => ({ ...p, media: [...p.media, { id, kind: 'capture', name: 'fs', ...size, loop: true }],
+            surfaces: p.surfaces.map((x, i) => i ? x : { ...x, layers: [{ ...x.layers[0], mediaId: id }] }) })); })()`,
+      );
+      const width = (w: BrowserWindow) => js<number>(w, `(window.__mapper ?? window.__mapperOutput).pool.stream('fs-capture')?.getVideoTracks()[0]?.getSettings().width ?? 0`);
+      await until(async () => (await width(out)) > 0, 10_000, 'output captures the window');
+      target.setSimpleFullScreen(true);
+      const screenSource = await until(() => lookupSource('fs-capture')?.startsWith('screen:') && lookupSource('fs-capture'), 10_000, 'switch to the screen');
+      const full = Math.round(other.bounds.width * other.scaleFactor);
+      await until(async () => (await width(editor)) === full && (await width(out)) === full, 10_000, 'both windows capture the screen');
+      target.setSimpleFullScreen(false);
+      await until(() => lookupSource('fs-capture') === windowSource, 10_000, 'back to the window');
+      await until(async () => (await width(editor)) === Math.round(800 * other.scaleFactor), 10_000, 'editor captures the window again');
+      return { ok: true, detail: { windowSource, screenSource, screenWidth: full } };
+    } finally {
+      await js(editor, `(() => { const { pool, editorStore } = window.__mapper; pool.stream('fs-capture')?.getTracks().forEach((t) => t.stop());
+        editorStore.getState().apply((p) => ({ ...p, media: p.media.filter((m) => m.id !== 'fs-capture') })); })()`);
+      target.destroy();
+    }
   });
 
   closeOutput();
