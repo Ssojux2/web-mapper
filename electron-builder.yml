@@ -15,7 +15,8 @@ files:
 extraMetadata:
   main: dist-electron/main.js
 asar: true
-artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+# No spaces: GitHub turns them into dots in release asset names.
+artifactName: Web-Mapper-${version}-${os}-${arch}.${ext}
 
 mac:
   target:
@@ -27,7 +28,7 @@ mac:
   hardenedRuntime: false
   darkModeSupport: true
 dmg:
-  artifactName: ${productName}-${version}-mac-${arch}.${ext}
+  artifactName: Web-Mapper-${version}-mac-${arch}.${ext}
 
 win:
   target:
@@ -42,4 +43,4 @@ nsis:
   createStartMenuShortcut: true
   shortcutName: Web Mapper
   license: LICENSE
-  artifactName: ${productName}-${version}-win-${arch}-setup.${ext}
+  artifactName: Web-Mapper-${version}-win-${arch}-setup.${ext}

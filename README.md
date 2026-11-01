@@ -72,9 +72,9 @@ Output 뷰 위쪽의 편집 모드로 전환합니다.
 
 | 운영체제 | 파일 |
 | --- | --- |
-| macOS (Apple Silicon: M1 이후) | `Web Mapper-x.y.z-mac-arm64.dmg` |
-| macOS (Intel) | `Web Mapper-x.y.z-mac-x64.dmg` |
-| Windows 10·11 (64비트) | `Web Mapper-x.y.z-win-x64-setup.exe` |
+| macOS (Apple Silicon: M1 이후) | `Web-Mapper-x.y.z-mac-arm64.dmg` |
+| macOS (Intel) | `Web-Mapper-x.y.z-mac-x64.dmg` |
+| Windows 10·11 (64비트) | `Web-Mapper-x.y.z-win-x64-setup.exe` |
 
 ### 처음 열 때 (서명 전이라 뜨는 경고)
 
