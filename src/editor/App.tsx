@@ -1,5 +1,7 @@
 import { useEffect } from 'react';
-import { addQuad, deleteSelected, duplicateSelected, newProject, openProject, restoreAllMedia, restoreReference, saveProject, toggleTestPattern } from './actions';
+import { addQuad, deleteSelected, duplicateSelected, loadScreens, newProject, openProject, restoreAllMedia, restoreReference, saveProject, toggleTestPattern } from './actions';
+import { CapturePicker } from './CapturePicker';
+import { isDesktop } from '../desktop';
 import { startBridge } from './bridge';
 import { exposeCaptureStreams } from '../media/capture';
 import { promptInstall, registerServiceWorker, watchInstallPrompt } from '../pwa';
@@ -68,7 +70,7 @@ function Toolbar() {
           className="primary"
           onClick={() => {
             const { screens, screenIndex } = runtimeStore.getState();
-            openOutputWindow(screens[screenIndex]?.screen);
+            void openOutputWindow(screens[screenIndex]);
           }}
         >
           {output ? (output.fullscreen ? '● 출력 중' : '● 출력 창') : '출력 창 열기'}
@@ -128,6 +130,8 @@ export function App() {
 
   useEffect(() => {
     exposeCaptureStreams(pool);
+    // The app lists displays without a permission prompt, so the list is ready up front.
+    if (isDesktop) void loadScreens(false);
     const stopBridge = startBridge();
     const stopKeys = installShortcuts();
     void restoreAllMedia(false);
@@ -159,6 +163,7 @@ export function App() {
         <OutputView />
       </main>
       <Toast />
+      <CapturePicker />
     </div>
   );
 }

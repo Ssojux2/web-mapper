@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createMesh, createProject, createSurface, updateSurface } from './model';
+import { activeLayer, createLayer, createMesh, createProject, createSurface, mediaUsage, moveLayerInSurface, removeMedia, TESTCARD_ID, updateSurface } from './model';
 import { createEditorStore } from './store';
 import { translateQuad } from './geometry';
 
@@ -94,5 +94,50 @@ describe('editor store history', () => {
     store.getState().select({ point: 4 });
     store.getState().undo();
     expect(store.getState().selection.point).toBeNull();
+  });
+});
+
+describe('surface layers', () => {
+  function withLayers() {
+    const { store, id } = setup();
+    const p0 = store.getState().project;
+    p0.media.push({ id: 'clip', kind: 'video', name: 'clip.mp4', width: 1920, height: 1080, loop: true });
+    const s = p0.surfaces[0];
+    const top = createLayer('clip', 'Top');
+    store.getState().apply((p) => updateSurface(p, id, { layers: [...s.layers, top] }));
+    return { store, id, base: s.layers[0], top };
+  }
+
+  it('works on the selected layer, else the top one', () => {
+    const { store, id, base, top } = withLayers();
+    const surface = store.getState().project.surfaces[0];
+    expect(activeLayer(surface, null)).toBe(surface.layers[1]);
+    expect(activeLayer(surface, base.id).id).toBe(base.id);
+    store.getState().select({ surfaceId: id, layerId: top.id });
+    expect(store.getState().selection.layerId).toBe(top.id);
+  });
+
+  it('reorders layers inside a surface', () => {
+    const { store, id, base, top } = withLayers();
+    store.getState().apply((p) => moveLayerInSurface(p, id, top.id, -1));
+    expect(store.getState().project.surfaces[0].layers.map((l) => l.id)).toEqual([top.id, base.id]);
+    const before = store.getState().project;
+    store.getState().apply((p) => moveLayerInSurface(p, id, top.id, -1)); // already at the bottom
+    expect(store.getState().project).toBe(before);
+  });
+
+  it('counts usage per surface and falls back to the test card when media is removed', () => {
+    const { store } = withLayers();
+    const p = store.getState().project;
+    expect(mediaUsage(p, 'clip')).toBe(1);
+    const after = removeMedia(p, 'clip');
+    expect(after.surfaces[0].layers.map((l) => l.mediaId)).toEqual([TESTCARD_ID, TESTCARD_ID]);
+  });
+
+  it('forgets a selected layer that no longer exists', () => {
+    const { store, id, top } = withLayers();
+    store.getState().select({ surfaceId: id, layerId: top.id });
+    store.getState().undo(); // removes the added layer
+    expect(store.getState().selection.layerId).toBeNull();
   });
 });

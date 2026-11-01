@@ -1,7 +1,8 @@
 import { mediaUsage, TESTCARD_ID } from '../core/model';
-import { addCapture, addMediaFiles, assignMedia, deleteMedia, relink, restoreAllMedia } from './actions';
+import { addCapture, addLayer, addMediaFiles, assignMedia, deleteMedia, relink, restoreAllMedia } from './actions';
 import { editorStore, useEditor, useRuntime, type MediaStatus } from './context';
 import { MEDIA_DRAG_TYPE } from './OutputOverlay';
+import { isDesktop } from '../desktop';
 import { kindOf } from '../media/library';
 
 const KIND_ICON = { testcard: '▦', video: '▶', image: '▣', capture: '⦿' } as const;
@@ -48,6 +49,13 @@ export function MediaBin() {
           onClick={() => selection.mediaId && selection.surfaceId && assignMedia(selection.surfaceId, selection.mediaId)}
         >
           선택한 서피스에 적용
+        </button>
+        <button
+          disabled={!selection.mediaId || !selection.surfaceId}
+          title="선택한 미디어를 선택한 서피스의 새 레이어로 겹칩니다 (Output 뷰에 Shift를 누른 채 놓아도 됩니다)"
+          onClick={() => selection.mediaId && selection.surfaceId && addLayer(selection.surfaceId, selection.mediaId)}
+        >
+          레이어로 겹치기
         </button>
       </div>
       <ul className="list">
@@ -100,9 +108,11 @@ export function MediaBin() {
           );
         })}
       </ul>
-      <p className="hint">파일을 여기로 끌어다 놓아도 추가됩니다. 미디어를 Output 뷰의 서피스 위에 놓으면 적용됩니다.</p>
+      <p className="hint">파일을 여기로 끌어다 놓아도 추가됩니다. 미디어를 Output 뷰의 서피스 위에 놓으면 선택한 레이어에 적용되고, Shift를 누른 채 놓으면 새 레이어로 겹칩니다.</p>
       <p className="hint">
-        캡처는 ‘창’으로 고르세요. 탭을 고르면 Chrome이 출력 창에도 공유 바를 띄웁니다. 창 테두리는 Input 뷰에서 잘라 내고, Chrome의 공유 알림은 ‘숨기기’로 내리면 됩니다. 실시간 소스라 새로 고치면 “다시 선택”이 필요하고, 출력 창은 “출력 창 열기”로 열어야 캡처가 보입니다.
+        {isDesktop
+          ? '캡처할 창이나 화면을 고르면 출력 창에도 같은 영상이 나오고, 공유 표시는 나타나지 않습니다. 창 테두리는 Input 뷰에서 잘라 내세요. 앱을 다시 열면 “다시 선택”이 필요합니다.'
+          : '캡처는 ‘창’으로 고르세요. 탭을 고르면 Chrome이 출력 창에도 공유 바를 띄웁니다. 창 테두리는 Input 뷰에서 잘라 내고, Chrome의 공유 알림은 ‘숨기기’로 내리면 됩니다. 실시간 소스라 새로 고치면 “다시 선택”이 필요하고, 출력 창은 “출력 창 열기”로 열어야 캡처가 보입니다.'}
       </p>
     </div>
   );

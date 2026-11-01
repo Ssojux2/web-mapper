@@ -1,0 +1,45 @@
+# Desktop installers: macOS dmg (Apple Silicon + Intel) and Windows NSIS (x64).
+# Unsigned for now; see README "데스크톱 앱" for opening an unsigned app.
+appId: io.github.ssojux2.webmapper
+productName: Web Mapper
+copyright: Copyright (c) 2026 Ssojux2
+directories:
+  output: release
+  buildResources: build
+files:
+  - dist/**
+  - dist-electron/**
+  - "!dist-electron/*.map"
+  - package.json
+  - "!node_modules/**"
+extraMetadata:
+  main: dist-electron/main.js
+asar: true
+artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+
+mac:
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+  category: public.app-category.video
+  icon: build/icon.png
+  identity: null
+  hardenedRuntime: false
+  darkModeSupport: true
+dmg:
+  artifactName: ${productName}-${version}-mac-${arch}.${ext}
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: build/icon.png
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Web Mapper
+  license: LICENSE
+  artifactName: ${productName}-${version}-win-${arch}-setup.${ext}

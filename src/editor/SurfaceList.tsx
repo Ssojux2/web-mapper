@@ -67,7 +67,7 @@ export function SurfaceList() {
             ) : (
               <span className="name">{s.name}</span>
             )}
-            <span className="sub">{findMedia(project, s.mediaId)?.name}</span>
+            <span className="sub">{s.layers.map((l) => findMedia(project, l.mediaId)?.name).join(' + ')}</span>
           </li>
         ))}
       </ul>

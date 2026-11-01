@@ -5,6 +5,8 @@ export type ViewKind = 'input' | 'output';
 
 export interface Selection {
   surfaceId: string | null;
+  /** Layer of the selected surface that the Input view and layer controls work on (null = top layer). */
+  layerId: string | null;
   /** Selected corner of the selected surface (0..3), or null for the whole surface. */
   corner: number | null;
   /** Media focused in the Media Bin. */
@@ -16,8 +18,8 @@ export interface Selection {
   maskPoint: number | null;
 }
 
-const EMPTY_SELECTION: Selection = { surfaceId: null, corner: null, mediaId: null, point: null, maskId: null, maskPoint: null };
-const SURFACE_PARTS = ['corner', 'point', 'maskId', 'maskPoint'] as const;
+const EMPTY_SELECTION: Selection = { surfaceId: null, layerId: null, corner: null, mediaId: null, point: null, maskId: null, maskPoint: null };
+const SURFACE_PARTS = ['layerId', 'corner', 'point', 'maskId', 'maskPoint'] as const;
 
 export interface EditorState {
   project: Project;
@@ -104,6 +106,7 @@ export function createEditorStore(initial: Project = createProject()) {
       const surface = project.surfaces.find((s) => s.id === next.surfaceId);
       if (!surface) next.surfaceId = null;
       if (!surface) for (const k of SURFACE_PARTS) next[k] = null;
+      if (next.layerId && !surface?.layers.some((l) => l.id === next.layerId)) next.layerId = null;
       if (next.point !== null && !(surface?.mesh && next.point < surface.mesh.offsets.length)) next.point = null;
       const mask = surface?.masks.find((m) => m.id === next.maskId);
       if (!mask) next.maskId = null;

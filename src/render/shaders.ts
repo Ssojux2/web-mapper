@@ -35,6 +35,24 @@ void main() {
 }
 `;
 
+// Layer composition: draws one layer into a surface's offscreen texture, which spans
+// the surface's unit square (st, y down) so the surface pass can sample it directly.
+export const layerFrag = `#version 300 es
+precision highp float;
+uniform mat3 u_input;
+uniform sampler2D u_tex;
+uniform vec2 u_size;        // offscreen texture size in pixels
+uniform float u_opacity;
+out vec4 outColor;
+void main() {
+  vec2 st = gl_FragCoord.xy / u_size;
+  vec3 q = u_input * vec3(st, 1.0);
+  vec2 uv = q.xy / q.z;
+  if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) discard;
+  outColor = texture(u_tex, uv) * u_opacity;
+}
+`;
+
 export const fullscreenVert = `#version 300 es
 in vec2 a_pos;
 void main() {

@@ -1,6 +1,7 @@
-import { closeOutputWindow, listScreens, openOutputWindow, supportsScreenPlacement } from '../output/screens';
+import { isDesktop } from '../desktop';
+import { closeOutputWindow, openOutputWindow, supportsScreenPlacement } from '../output/screens';
 import { NumberField } from './NumberField';
-import { fitReference, loadReference, restoreReference, setEditMode, setReference, updateReference } from './actions';
+import { fitReference, loadReference, loadScreens, restoreReference, setEditMode, setReference, updateReference } from './actions';
 import { editorStore, runtimeStore, toast, useEditor, useRuntime } from './context';
 
 const PRESETS: [number, number][] = [
@@ -24,22 +25,11 @@ export function OutputPanel() {
   const referenceStatus = useRuntime((s) => (s.reference?.key === reference?.fileKey ? s.reference?.status : undefined));
   const target = screens[screenIndex];
 
-  const loadScreens = async () => {
-    try {
-      const list = await listScreens();
-      const remembered = list.findIndex((s) => s.label === output.screenLabel);
-      const external = list.findIndex((s) => !s.primary);
-      runtimeStore.setState({ screens: list, screenIndex: remembered >= 0 ? remembered : external >= 0 ? external : 0 });
-      if (list.length < 2) toast('연결된 화면이 하나뿐입니다. 프로젝터를 연결하면 목록에 나타납니다.');
-    } catch {
-      toast('화면 목록 권한이 거부되었습니다. 주소창의 권한 설정에서 “창 관리”를 허용하세요.', true);
-    }
-  };
-
   const open = () => {
-    const win = openOutputWindow(target?.screen);
-    if (!win) toast('팝업이 차단되었습니다. 주소창에서 이 사이트의 팝업을 허용하세요.', true);
-    else if (target) setOutput({ screenLabel: target.label });
+    void openOutputWindow(target).then((ok) => {
+      if (!ok) toast('팝업이 차단되었습니다. 주소창에서 이 사이트의 팝업을 허용하세요.', true);
+      else if (target) setOutput({ screenLabel: target.label });
+    });
   };
 
   return (
@@ -95,7 +85,7 @@ export function OutputPanel() {
                 </option>
               ))}
             </select>
-            <button onClick={() => void loadScreens()}>화면 목록</button>
+            <button onClick={() => void loadScreens(true)}>{isDesktop ? '새로 고침' : '화면 목록'}</button>
           </div>
         </>
       ) : (
@@ -112,7 +102,11 @@ export function OutputPanel() {
       <p className={`status-line${status ? ' ok' : ''}`}>
         {status ? (status.fullscreen ? '● 출력 중 (전체화면)' : '● 연결됨 · 출력 창을 클릭하면 전체화면') : '○ 출력 창 없음'}
       </p>
-      <p className="hint">출력 창의 안내문과 커서는 마우스를 멈추면 사라집니다. 캡처를 쓸 때 탭을 공유하면 Chrome의 공유 바가 출력에도 보이니, ‘창’으로 공유하세요.</p>
+      <p className="hint">
+        {isDesktop
+          ? '출력 창은 고른 화면에 전체화면으로 열립니다. 화면을 바꾸려면 목록에서 고른 뒤 “출력 창 앞으로”를 누르세요. 안내문과 커서는 마우스를 멈추면 사라집니다.'
+          : '출력 창의 안내문과 커서는 마우스를 멈추면 사라집니다. 캡처를 쓸 때 탭을 공유하면 Chrome의 공유 바가 출력에도 보이니, ‘창’으로 공유하세요.'}
+      </p>
 
       <h3>참조 이미지</h3>
       {reference ? (

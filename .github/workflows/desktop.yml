@@ -1,0 +1,92 @@
+name: Desktop app
+
+# Builds the macOS and Windows installers, installs each one the way a user would and
+# runs the app's --smoke-test against the installed copy. Installers, the smoke report
+# and screenshots are uploaded as artifacts. A v* tag also drafts a GitHub release
+# (never published automatically).
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+  pull_request:
+    paths: ['electron/**', 'src/**', 'scripts/**', 'electron-builder.yml', 'package*.json', '.github/workflows/desktop.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+
+      - name: Build macOS dmg (Apple Silicon + Intel)
+        if: runner.os == 'macOS'
+        run: npm run dist:mac
+      - name: Install from the dmg and smoke-test
+        if: runner.os == 'macOS'
+        run: |
+          dmg=$(ls release/*-mac-arm64.dmg)
+          mnt=$(hdiutil attach -nobrowse -readonly "$dmg" | tail -1 | awk -F'\t' '{print $NF}')
+          mkdir -p "$RUNNER_TEMP/Applications"
+          cp -R "$mnt/Web Mapper.app" "$RUNNER_TEMP/Applications/"
+          hdiutil detach "$mnt"
+          mkdir -p smoke
+          node scripts/smoke.mjs "$RUNNER_TEMP/Applications/Web Mapper.app/Contents/MacOS/Web Mapper" smoke/smoke-mac.json
+
+      - name: Build Windows installer
+        if: runner.os == 'Windows'
+        run: npm run dist:win
+      - name: Install silently and smoke-test
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem release -Filter '*-setup.exe' | Select-Object -First 1
+          Start-Process -FilePath $setup.FullName -ArgumentList '/S' -Wait
+          $exe = Join-Path $env:LOCALAPPDATA 'Programs\Web Mapper\Web Mapper.exe'
+          if (-not (Test-Path $exe)) { throw "설치된 앱이 없습니다: $exe" }
+          New-Item -ItemType Directory -Force smoke | Out-Null
+          node scripts/smoke.mjs $exe smoke/smoke-win.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: web-mapper-${{ runner.os }}
+          path: |
+            release/*.dmg
+            release/*-setup.exe
+            smoke/
+          if-no-files-found: warn
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+      - name: Draft release with the installers
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft --title "Web Mapper $GITHUB_REF_NAME" --generate-notes \
+            artifacts/*/release/*.dmg artifacts/*/release/*-setup.exe

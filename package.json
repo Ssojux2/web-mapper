@@ -2,14 +2,24 @@
   "name": "web-mapper",
   "private": true,
   "version": "0.1.0",
+  "description": "Projection mapping in the browser and as a desktop app",
+  "author": "Ssojux2",
   "license": "PolyForm-Noncommercial-1.0.0",
   "type": "module",
+  "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit -p . && tsc --noEmit -p electron",
+    "app:dev": "node scripts/electron.mjs dev",
+    "app:build": "npm run build && tsc --noEmit -p electron && node scripts/electron.mjs build",
+    "app:start": "electron .",
+    "dist:mac": "npm run app:build && electron-builder --mac --arm64 --x64 --publish never",
+    "dist:win": "npm run app:build && electron-builder --win --x64 --publish never",
+    "smoke": "node scripts/smoke.mjs"
   },
   "dependencies": {
     "react": "^19.3.1",
@@ -23,6 +33,9 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
+    "electron": "^45.2.1",
+    "electron-builder": "^26.18.0",
+    "esbuild": "^0.28.2",
     "eslint": "^10.13.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.13.0",
@@ -30,5 +43,8 @@
     "typescript-eslint": "^8.72.0",
     "vite": "^8.3.5",
     "vitest": "^5.0.5"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true
   }
 }

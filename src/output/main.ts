@@ -1,6 +1,7 @@
 import { createProject, type Project } from '../core/model';
 import { SyncChannel, type TransportState } from '../core/sync';
-import { captureFromOpener, hasOpener } from '../media/capture';
+import { desktop } from '../desktop';
+import { captureDesktopSource, captureFromOpener, hasOpener, lookupDesktopCapture, stopStream } from '../media/capture';
 import { MediaPool } from '../media/pool';
 import { registerServiceWorker } from '../pwa';
 import { Renderer } from '../render/renderer';
@@ -46,12 +47,17 @@ sync.on((msg) => {
   }
 });
 
-// Captures are borrowed from the editor window. Checked on every project update and
-// periodically, because re-picking a capture swaps the stream without a project change.
+// Captures are borrowed from the editor window (web) or captured again from the same
+// source (desktop app). Checked on every project update and periodically, because
+// re-picking a capture swaps the stream without a project change.
 const pendingCaptures = new Set<string>();
 let captureUnavailable = false;
 
 function syncCaptures(): void {
+  if (desktop) {
+    void syncDesktopCaptures();
+    return;
+  }
   const captures = project.media.filter((m) => m.kind === 'capture');
   captureUnavailable = captures.length > 0 && !hasOpener();
   for (const m of captures) {
@@ -64,6 +70,44 @@ function syncCaptures(): void {
       .finally(() => pendingCaptures.delete(m.id));
   }
 }
+// Desktop: this window owns its streams, so it also stops the ones no longer needed.
+const desktopSources = new Map<string, string>();
+const failedSources = new Map<string, string>();
+let desktopSyncing = false;
+
+async function syncDesktopCaptures(): Promise<void> {
+  if (desktopSyncing) return;
+  desktopSyncing = true;
+  try {
+    const ids = new Set(project.media.filter((m) => m.kind === 'capture').map((m) => m.id));
+    for (const [id] of desktopSources) {
+      if (ids.has(id)) continue;
+      stopStream(pool.stream(id));
+      desktopSources.delete(id);
+    }
+    // One at a time: each getDisplayMedia() call takes the source armed just before it.
+    for (const id of ids) {
+      const sourceId = await lookupDesktopCapture(id);
+      const current = pool.stream(id);
+      const live = current?.getVideoTracks()[0]?.readyState === 'live';
+      if (!sourceId || (sourceId === desktopSources.get(id) && live) || failedSources.get(id) === sourceId) continue;
+      try {
+        const stream = await captureDesktopSource(id, sourceId);
+        await pool.setStream(id, stream);
+        stopStream(current);
+        desktopSources.set(id, sourceId);
+        failedSources.delete(id);
+      } catch (err) {
+        // E.g. the captured window was closed; retried once the editor re-picks.
+        failedSources.set(id, sourceId);
+        console.error(err);
+      }
+    }
+  } finally {
+    desktopSyncing = false;
+  }
+}
+
 setInterval(() => {
   const was = captureUnavailable;
   syncCaptures();
@@ -85,13 +129,18 @@ function frame(): void {
 }
 requestAnimationFrame(frame);
 
-// Fullscreen needs a user gesture inside this window: a click or the F key.
+// Web: fullscreen needs a user gesture inside this window, a click or the F key.
+// Desktop app: the window itself is made fullscreen on its display by the main process.
+let desktopFullscreen = false;
+const isFullscreen = () => (desktop ? desktopFullscreen : !!document.fullscreenElement);
+
 function toggleFullscreen(): void {
-  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  if (desktop) void desktop.output.toggleFullscreen();
+  else if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
   else document.documentElement.requestFullscreen().catch(() => {});
 }
 document.addEventListener('click', () => {
-  if (!document.fullscreenElement) toggleFullscreen();
+  if (!isFullscreen()) toggleFullscreen();
 });
 document.addEventListener('keydown', (e) => {
   if (e.key === 'f' || e.key === 'F') toggleFullscreen();
@@ -100,7 +149,7 @@ document.addEventListener('keydown', (e) => {
 function reportStatus(): void {
   sync.post({
     type: 'output-status',
-    fullscreen: !!document.fullscreenElement,
+    fullscreen: isFullscreen(),
     width: Math.round(screen.width * devicePixelRatio),
     height: Math.round(screen.height * devicePixelRatio),
   });
@@ -111,12 +160,14 @@ function reportStatus(): void {
 let idle = false;
 
 function updateHint(): void {
-  const full = !!document.fullscreenElement;
+  const full = isFullscreen();
   document.body.classList.toggle('fullscreen', full);
   hint.classList.toggle('hide', full || idle);
-  hint.innerHTML = connected
-    ? '<b>클릭하면 전체화면 (F)</b><span>이 창을 프로젝터 화면으로 옮긴 뒤 누르세요 · 마우스를 멈추면 안내가 사라집니다</span>'
-    : '<b>컨트롤러 연결 대기 중…</b><span>편집기 창에서 “출력 창 열기”를 누르세요</span>';
+  hint.innerHTML = !connected
+    ? '<b>컨트롤러 연결 대기 중…</b><span>편집기 창에서 “출력 창 열기”를 누르세요</span>'
+    : desktop
+      ? '<b>클릭하면 전체화면 (F)</b><span>화면 선택과 닫기는 편집기의 Output 탭에서 합니다 · 마우스를 멈추면 안내가 사라집니다</span>'
+      : '<b>클릭하면 전체화면 (F)</b><span>이 창을 프로젝터 화면으로 옮긴 뒤 누르세요 · 마우스를 멈추면 안내가 사라집니다</span>';
   if (captureUnavailable) {
     hint.innerHTML += '<span class="warn">화면 캡처는 편집기의 “출력 창 열기”로 연 창에서만 보입니다</span>';
   }
@@ -126,6 +177,14 @@ document.addEventListener('fullscreenchange', () => {
   updateHint();
   reportStatus();
 });
+function onDesktopStatus(status: { fullscreen: boolean }): void {
+  if (status.fullscreen === desktopFullscreen) return;
+  desktopFullscreen = status.fullscreen;
+  updateHint();
+  reportStatus();
+}
+desktop?.output.onStatus(onDesktopStatus);
+void desktop?.output.status().then(onDesktopStatus);
 window.addEventListener('beforeunload', () => sync.post({ type: 'output-closed' }));
 
 // When the mouse rests, hide the cursor and the hint, like a dedicated output.
@@ -151,6 +210,6 @@ wake();
 sync.post({ type: 'hello' });
 reportStatus();
 
-if (import.meta.env.DEV) {
+if (import.meta.env.DEV || desktop?.smoke) {
   Object.assign(window, { __mapperOutput: { renderer, pool, getProject: () => project } });
 }

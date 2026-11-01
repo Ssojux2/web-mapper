@@ -1,6 +1,6 @@
-import { findMedia, findSurface, MAX_MESH_DIVISIONS, updateSurface, type Surface } from '../core/model';
+import { activeLayer, BLEND_MODES, findMedia, findSurface, MAX_MESH_DIVISIONS, updateSurface, type BlendMode, type Surface } from '../core/model';
 import { setCorner } from '../core/geometry';
-import { addRectMask, enableMesh, flattenMesh, mediaSize, recapture, removeMask, removeMesh, resetInput, setEditMode, setLoop, setMask, setMeshSize, setMeshSmooth, squareOutput, TAB_CAPTURE_WARNING } from './actions';
+import { addLayer, addRectMask, enableMesh, flattenMesh, mediaSize, recapture, moveSurfaceLayer, removeLayer, removeMask, removeMesh, resetInput, setEditMode, setLayer, setLoop, setMask, setMeshSize, setMeshSmooth, squareOutput, TAB_CAPTURE_WARNING } from './actions';
 import { editorStore, pool, runtimeStore, useEditor, useRuntime } from './context';
 import { isTabCapture } from '../media/capture';
 import { NumberField } from './NumberField';
@@ -17,16 +17,6 @@ function SurfaceInspector({ surfaceId }: { surfaceId: string }) {
   return (
     <div className="inspector-section">
       <h3>서피스 · {surface.name}</h3>
-      <label className="field">
-        <span>미디어</span>
-        <select value={surface.mediaId} onChange={(e) => apply((p) => updateSurface(p, surface.id, { mediaId: e.target.value }))}>
-          {project.media.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.name}
-            </option>
-          ))}
-        </select>
-      </label>
       <label className="field">
         <span>불투명도</span>
         <input
@@ -45,6 +35,7 @@ function SurfaceInspector({ surfaceId }: { surfaceId: string }) {
         <input type="checkbox" checked={surface.visible} onChange={(e) => apply((p) => updateSurface(p, surface.id, { visible: e.target.checked }))} />
         보이기
       </label>
+      <LayerSection surface={surface} />
 
       <h4>출력 코너 (px)</h4>
       {surface.output.map((p, i) => (
@@ -58,12 +49,99 @@ function SurfaceInspector({ surfaceId }: { surfaceId: string }) {
         <button onClick={() => squareOutput(surface.id)} title="원근 변형을 풀고 직사각형으로 되돌립니다">
           직사각형으로
         </button>
-        <button onClick={() => resetInput(surface.id)} title="입력 영역을 미디어 전체로 되돌립니다">
+        <button onClick={() => resetInput(surface.id)} title="선택한 레이어의 입력 영역을 미디어 전체로 되돌립니다">
           입력 전체로
         </button>
       </div>
       <MeshSection surface={surface} />
       <MaskSection surface={surface} />
+    </div>
+  );
+}
+
+const BLEND_NAMES: Record<BlendMode, string> = { normal: '보통', add: '더하기', screen: '스크린', multiply: '곱하기' };
+
+/** The surface's layer stack (front on top) and the controls of the selected layer. */
+function LayerSection({ surface }: { surface: Surface }) {
+  const project = useEditor((s) => s.project);
+  const layerId = useEditor((s) => s.selection.layerId);
+  const layer = activeLayer(surface, layerId);
+  const index = surface.layers.indexOf(layer);
+  const select = (id: string) => editorStore.getState().select({ layerId: id, corner: null });
+  return (
+    <div className="inspector-section">
+      <h4>레이어</h4>
+      <ul className="list layer-list">
+        {surface.layers
+          .map((l) => (
+            <li key={l.id} className={`row${l.id === layer.id ? ' selected' : ''}${l.visible ? '' : ' dim'}`} onClick={() => select(l.id)}>
+              <input
+                type="checkbox"
+                title="보이기"
+                checked={l.visible}
+                onClick={(e) => e.stopPropagation()}
+                onChange={(e) => setLayer(surface.id, l.id, { visible: e.target.checked })}
+              />
+              <span className="name">{l.name}</span>
+              <span className="sub">
+                {findMedia(project, l.mediaId)?.name}
+                {l.blend !== 'normal' && ` · ${BLEND_NAMES[l.blend]}`}
+              </span>
+            </li>
+          ))
+          .reverse()}
+      </ul>
+      <div className="field-row">
+        <button onClick={() => addLayer(surface.id)} title="Media Bin에서 고른 미디어(없으면 Test Card)로 맨 위에 레이어를 추가합니다">
+          + 레이어
+        </button>
+        <button className="icon" title="위로" disabled={index === surface.layers.length - 1} onClick={() => moveSurfaceLayer(surface.id, layer.id, 1)}>
+          ▲
+        </button>
+        <button className="icon" title="아래로" disabled={index === 0} onClick={() => moveSurfaceLayer(surface.id, layer.id, -1)}>
+          ▼
+        </button>
+        <button className="icon" title="레이어 삭제" disabled={surface.layers.length < 2} onClick={() => removeLayer(surface.id, layer.id)}>
+          ✕
+        </button>
+      </div>
+      <label className="field">
+        <span>미디어</span>
+        <select value={layer.mediaId} onChange={(e) => setLayer(surface.id, layer.id, { mediaId: e.target.value })}>
+          {project.media.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="field">
+        <span>불투명도</span>
+        <input
+          type="range"
+          min={0}
+          max={1}
+          step={0.01}
+          value={layer.opacity}
+          onPointerDown={() => editorStore.getState().beginGesture()}
+          onPointerUp={() => editorStore.getState().endGesture()}
+          onChange={(e) => setLayer(surface.id, layer.id, { opacity: Number(e.target.value) })}
+        />
+        <span className="value">{Math.round(layer.opacity * 100)}%</span>
+      </label>
+      <label className="field">
+        <span>블렌드</span>
+        <select value={layer.blend} disabled={index === 0} onChange={(e) => setLayer(surface.id, layer.id, { blend: e.target.value as BlendMode })}>
+          {BLEND_MODES.map((b) => (
+            <option key={b} value={b}>
+              {BLEND_NAMES[b]}
+            </option>
+          ))}
+        </select>
+      </label>
+      <p className="hint">
+        위에 있는 레이어가 앞에 그려집니다. 레이어마다 Input 뷰에서 미디어의 보일 영역을 따로 정하고, 마스크와 메시는 서피스 전체에 함께 적용됩니다. 맨 아래 레이어는 블렌드 없이 깔립니다.
+      </p>
     </div>
   );
 }

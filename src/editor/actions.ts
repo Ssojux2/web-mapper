@@ -1,9 +1,10 @@
-import { cloneQuad, createId, createMesh, createProject, createSurface, findMedia, findSurface, FULL_INPUT, moveSurface, rectQuad, removeMedia, TESTCARD_ID, translateSurface, updateMask, updateMedia, updateSurface, type Mask, type Media, type Point, type Project, type Quad, type ReferenceImage, type Surface } from '../core/model';
+import { activeLayer, cloneQuad, createId, createLayer, createMesh, createProject, createSurface, findMedia, findSurface, FULL_INPUT, moveLayerInSurface, moveSurface, rectQuad, removeMedia, TESTCARD_ID, translateSurface, updateLayer, updateMask, updateMedia, updateSurface, type Layer, type Mask, type Media, type Point, type Project, type Quad, type ReferenceImage, type Surface } from '../core/model';
 import { setCorner, translateQuad } from '../core/geometry';
 import { isMeshCorner, resampleMesh, surfaceGeometry } from '../core/mesh';
 import { importMedia, loadRememberedFile, pickImageFile, pickMediaFiles, relinkMedia, rememberFile, restoreMedia, type PickedFile } from '../media/library';
 import { captureKindLabel, isTabCapture, pickCapture, stopStream } from '../media/capture';
 import { openProjectFile, resetCurrentFile, saveProjectFile } from '../project/io';
+import { listScreens } from '../output/screens';
 import { editorStore, pool, runtimeStore, setMediaStatus, toast, type EditMode } from './context';
 import * as playback from './playback';
 
@@ -20,11 +21,18 @@ export function selectedSurface() {
   return findSurface(project, selection.surfaceId);
 }
 
-/** Media shown in the Input view: the selected surface's, else the one focused in the bin. */
-export function inputMedia(project: Project, selection = state().selection): Media {
+/** The layer of the selected surface that the Input view and layer controls work on. */
+export function selectedLayer(project = state().project, selection = state().selection): Layer | undefined {
   const surface = findSurface(project, selection.surfaceId);
+  return surface && activeLayer(surface, selection.layerId);
+}
+
+/** Media shown in the Input view: the selected layer's, else the one focused in the bin. */
+export function inputMedia(project: Project, selection = state().selection): Media {
   return (
-    findMedia(project, surface?.mediaId ?? '') ?? findMedia(project, selection.mediaId ?? '') ?? findMedia(project, TESTCARD_ID)!
+    findMedia(project, selectedLayer(project, selection)?.mediaId ?? '') ??
+    findMedia(project, selection.mediaId ?? '') ??
+    findMedia(project, TESTCARD_ID)!
   );
 }
 
@@ -40,7 +48,7 @@ export function mediaSize(media: Media): { width: number; height: number } {
 export function addQuad(): void {
   const { project, selection } = state();
   const media =
-    findMedia(project, selection.mediaId ?? '') ?? findMedia(project, selectedSurface()?.mediaId ?? '') ?? project.media[0];
+    findMedia(project, selection.mediaId ?? '') ?? findMedia(project, selectedLayer()?.mediaId ?? '') ?? project.media[0];
   const surface = createSurface(project, media);
   state().apply((p) => ({ ...p, surfaces: [...p.surfaces, surface] }));
   state().select({ surfaceId: surface.id, corner: null });
@@ -54,7 +62,7 @@ export function duplicateSelected(): void {
     ...src,
     id: createId('surface'),
     name: `${src.name} 복사본`,
-    input: cloneQuad(src.input),
+    layers: src.layers.map((l) => ({ ...l, id: createId('layer'), input: cloneQuad(l.input) })),
     output: moved.output,
     masks: moved.masks.map((m) => ({ ...m, id: createId('mask') })),
     mesh: src.mesh && { ...src.mesh, offsets: src.mesh.offsets.map((o) => ({ ...o })) },
@@ -111,10 +119,10 @@ export function nudge(dx: number, dy: number): void {
       state().apply((p) => updateSurface(p, surface.id, { output }));
     }
   } else {
-    const media = findMedia(project, surface.mediaId)!;
-    const { width, height } = mediaSize(media);
-    const input = moveInput(surface.input, selection.corner, dx / width, dy / height);
-    state().apply((p) => updateSurface(p, surface.id, { input }));
+    const layer = activeLayer(surface, selection.layerId);
+    const { width, height } = mediaSize(findMedia(project, layer.mediaId)!);
+    const input = moveInput(layer.input, selection.corner, dx / width, dy / height);
+    state().apply((p) => updateLayer(p, surface.id, layer.id, { input }));
   }
 }
 
@@ -156,12 +164,50 @@ export function cycleCorner(dir: 1 | -1): void {
   state().select({ surfaceId: order[si].id, corner });
 }
 
+/** The layer a command on `surfaceId` targets: the selected layer if that surface is selected, else its top layer. */
+function targetLayer(surfaceId: string): Layer | undefined {
+  const { project, selection } = state();
+  const surface = findSurface(project, surfaceId);
+  return surface && activeLayer(surface, selection.surfaceId === surfaceId ? selection.layerId : null);
+}
+
+/** Puts a media on the surface's target layer. */
 export function assignMedia(surfaceId: string, mediaId: string): void {
-  state().apply((p) => updateSurface(p, surfaceId, { mediaId }));
+  const layer = targetLayer(surfaceId);
+  if (layer) state().apply((p) => updateLayer(p, surfaceId, layer.id, { mediaId }));
 }
 
 export function resetInput(surfaceId: string): void {
-  state().apply((p) => updateSurface(p, surfaceId, { input: cloneQuad(FULL_INPUT) }));
+  const layer = targetLayer(surfaceId);
+  if (layer) state().apply((p) => updateLayer(p, surfaceId, layer.id, { input: cloneQuad(FULL_INPUT) }));
+}
+
+/** Adds a layer on top of the surface's stack and selects it. */
+export function addLayer(surfaceId: string, mediaId?: string): void {
+  const { project, selection } = state();
+  const surface = findSurface(project, surfaceId);
+  if (!surface) return;
+  const media = findMedia(project, mediaId ?? selection.mediaId ?? '') ?? findMedia(project, TESTCARD_ID)!;
+  const layer = createLayer(media.id, `Layer ${surface.layers.length + 1}`);
+  state().apply((p) => updateSurface(p, surfaceId, { layers: [...surface.layers, layer] }));
+  state().select({ surfaceId, layerId: layer.id });
+}
+
+/** Removes a layer; the last remaining layer of a surface stays. */
+export function removeLayer(surfaceId: string, layerId: string): void {
+  const surface = findSurface(state().project, surfaceId);
+  if (!surface || surface.layers.length < 2) return;
+  state().apply((p) => updateSurface(p, surfaceId, { layers: surface.layers.filter((l) => l.id !== layerId) }));
+  state().select({});
+}
+
+export function setLayer(surfaceId: string, layerId: string, patch: Partial<Layer>): void {
+  state().apply((p) => updateLayer(p, surfaceId, layerId, patch));
+}
+
+/** Moves a layer up (+1, towards the front) or down (-1) inside its surface. */
+export function moveSurfaceLayer(surfaceId: string, layerId: string, delta: number): void {
+  state().apply((p) => moveLayerInSurface(p, surfaceId, layerId, delta));
 }
 
 /** Snaps the output quad back to an axis-aligned rectangle around its current bounds. */
@@ -173,6 +219,23 @@ export function squareOutput(surfaceId: string): void {
   const x = Math.min(...xs);
   const y = Math.min(...ys);
   state().apply((p) => updateSurface(p, surfaceId, { output: rectQuad(x, y, Math.max(...xs) - x, Math.max(...ys) - y) }));
+}
+
+/**
+ * Fills the display list, preferring the screen used last time, else an external one.
+ * `interactive` reports problems (the web asks for a permission here).
+ */
+export async function loadScreens(interactive: boolean): Promise<void> {
+  try {
+    const list = await listScreens();
+    const label = state().project.output.screenLabel;
+    const remembered = list.findIndex((s) => s.label === label);
+    const external = list.findIndex((s) => !s.primary);
+    runtimeStore.setState({ screens: list, screenIndex: remembered >= 0 ? remembered : external >= 0 ? external : 0 });
+    if (interactive && list.length < 2) toast('연결된 화면이 하나뿐입니다. 프로젝터를 연결하면 목록에 나타납니다.');
+  } catch {
+    if (interactive) toast('화면 목록 권한이 거부되었습니다. 주소창의 권한 설정에서 “창 관리”를 허용하세요.', true);
+  }
 }
 
 export async function addMediaFiles(files?: PickedFile[]): Promise<void> {
@@ -260,7 +323,7 @@ function watchCapture(mediaId: string, stream: MediaStream): void {
 }
 
 async function startCapture(mediaId: string): Promise<{ stream: MediaStream; width: number; height: number } | null> {
-  const stream = await pickCapture();
+  const stream = await pickCapture(mediaId);
   if (!stream) return null;
   try {
     const size = await pool.setStream(mediaId, stream);

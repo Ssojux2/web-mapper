@@ -1,15 +1,51 @@
+import type { CaptureSource, ScreenPermission } from '../desktop/api';
+import { desktop } from '../desktop';
 import type { MediaPool } from './pool';
 
-// Tab/screen capture as a media source. The editor owns the MediaStreams; the output
-// window, opened by the editor, borrows the very same stream objects through
-// window.opener (a MediaStream cannot be sent over BroadcastChannel).
+// Tab/screen capture as a media source.
+// Web: the editor owns the MediaStreams; the output window, opened by the editor,
+// borrows the very same stream objects through window.opener (a MediaStream cannot be
+// sent over BroadcastChannel).
+// Desktop app: the editor picks a source in its own dialog and both windows capture
+// that source themselves (see electron/capture.ts); there is no sharing bar at all.
 
 interface CaptureHost {
   mapperCapture?: { stream(id: string): MediaStream | undefined };
 }
 
-/** Asks the user to pick a tab, window or screen. Resolves to null if they cancel. */
-export async function pickCapture(): Promise<MediaStream | null> {
+/** The desktop app's source picker UI, installed by the editor (CapturePicker). */
+export type SourceChooser = (opts: {
+  load(): Promise<CaptureSource[]>;
+  permission: ScreenPermission;
+  openSettings(): void;
+}) => Promise<CaptureSource | null>;
+
+let chooser: SourceChooser | null = null;
+export function setSourceChooser(fn: SourceChooser | null): void {
+  chooser = fn;
+}
+
+/** Labels for desktop captures, whose tracks don't report a display surface. */
+const kindLabels = new WeakMap<MediaStream, string>();
+
+async function desktopDisplayMedia(mediaId: string, sourceId: string): Promise<MediaStream> {
+  await desktop!.capture.select(mediaId, sourceId);
+  return navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 60 } }, audio: false });
+}
+
+async function pickDesktopCapture(mediaId: string): Promise<MediaStream | null> {
+  if (!chooser) throw new Error('캡처 선택 창을 열 수 없습니다.');
+  const api = desktop!.capture;
+  const source = await chooser({ load: api.sources, permission: await api.permission(), openSettings: () => void api.openSettings() });
+  if (!source) return null;
+  const stream = await desktopDisplayMedia(mediaId, source.id);
+  kindLabels.set(stream, source.kind === 'screen' ? '화면 캡처' : '창 캡처');
+  return stream;
+}
+
+/** Asks the user to pick a tab, window or screen for `mediaId`. Resolves to null if they cancel. */
+export async function pickCapture(mediaId: string): Promise<MediaStream | null> {
+  if (desktop) return pickDesktopCapture(mediaId);
   if (!navigator.mediaDevices?.getDisplayMedia) {
     throw new Error('이 브라우저는 화면 캡처를 지원하지 않습니다.');
   }
@@ -38,6 +74,8 @@ function displaySurface(stream: MediaStream): string | undefined {
 
 /** "탭 캡처" / "창 캡처" / "화면 캡처". Track labels are internal ids, so the surface type names it. */
 export function captureKindLabel(stream: MediaStream): string {
+  const known = kindLabels.get(stream);
+  if (known) return known;
   const surface = displaySurface(stream);
   return surface === 'browser' ? '탭 캡처' : surface === 'window' ? '창 캡처' : '화면 캡처';
 }
@@ -72,4 +110,14 @@ export function hasOpener(): boolean {
   } catch {
     return false;
   }
+}
+
+/** Output side, desktop app: the source the editor picked for `mediaId` (it changes on re-pick). */
+export async function lookupDesktopCapture(mediaId: string): Promise<string | null> {
+  return desktop ? desktop.capture.lookup(mediaId) : null;
+}
+
+/** Output side, desktop app: this window's own stream of that source. */
+export function captureDesktopSource(mediaId: string, sourceId: string): Promise<MediaStream> {
+  return desktopDisplayMedia(mediaId, sourceId);
 }

@@ -50,15 +50,30 @@ export interface Mask {
   enabled: boolean;
 }
 
+/** How a layer combines with the layers below it inside its surface. */
+export type BlendMode = 'normal' | 'add' | 'screen' | 'multiply';
+export const BLEND_MODES: BlendMode[] = ['normal', 'add', 'screen', 'multiply'];
+
+/** One media stacked inside a surface. Every layer fills the surface's whole shape. */
+export interface Layer {
+  id: string;
+  name: string;
+  mediaId: string;
+  /** Region of the media to show, in normalized media coordinates (0..1, y down). */
+  input: Quad;
+  opacity: number;
+  blend: BlendMode;
+  visible: boolean;
+}
+
 export interface Surface {
   id: string;
   name: string;
   type: 'quad';
-  mediaId: string;
+  /** Back-to-front: index 0 is drawn first. Always at least one layer. */
+  layers: Layer[];
   visible: boolean;
   opacity: number;
-  /** Region of the media to show, in normalized media coordinates (0..1, y down). */
-  input: Quad;
   /** Where the surface lands on the output canvas, in output pixels. */
   output: Quad;
   mesh?: Mesh;
@@ -126,13 +141,16 @@ export function createSurface(project: Project, media: Media, name?: string): Su
     id: createId('surface'),
     name: name ?? `Quad ${project.surfaces.length + 1}`,
     type: 'quad',
-    mediaId: media.id,
+    layers: [createLayer(media.id, 'Layer 1')],
     visible: true,
     opacity: 1,
-    input: cloneQuad(FULL_INPUT),
     output: rectQuad((ow - w) / 2, (oh - h) / 2, w, h),
     masks: [],
   };
+}
+
+export function createLayer(mediaId: string, name: string): Layer {
+  return { id: createId('layer'), name, mediaId, input: cloneQuad(FULL_INPUT), opacity: 1, blend: 'normal', visible: true };
 }
 
 export function createProject(): Project {
@@ -162,21 +180,49 @@ export function updateSurface(project: Project, id: string, patch: Partial<Surfa
   return { ...project, surfaces: project.surfaces.map((s) => (s.id === id ? { ...s, ...patch } : s)) };
 }
 
+/** The layer the editor works on: the selected one, else the top layer. */
+export function activeLayer(surface: Surface, layerId: string | null): Layer {
+  return surface.layers.find((l) => l.id === layerId) ?? surface.layers[surface.layers.length - 1];
+}
+
+export function updateLayer(project: Project, surfaceId: string, layerId: string, patch: Partial<Layer>): Project {
+  const s = findSurface(project, surfaceId);
+  if (!s) return project;
+  return updateSurface(project, surfaceId, { layers: s.layers.map((l) => (l.id === layerId ? { ...l, ...patch } : l)) });
+}
+
+/** Moves a layer one step up (+1, towards the front) or down (-1) inside its surface. */
+export function moveLayerInSurface(project: Project, surfaceId: string, layerId: string, delta: number): Project {
+  const s = findSurface(project, surfaceId);
+  if (!s) return project;
+  const i = s.layers.findIndex((l) => l.id === layerId);
+  const j = i + delta;
+  if (i < 0 || j < 0 || j >= s.layers.length) return project;
+  const layers = s.layers.slice();
+  [layers[i], layers[j]] = [layers[j], layers[i]];
+  return updateSurface(project, surfaceId, { layers });
+}
+
 export function updateMedia(project: Project, id: string, patch: Partial<Media>): Project {
   return { ...project, media: project.media.map((m) => (m.id === id ? { ...m, ...patch } : m)) };
 }
 
+/** Number of surfaces that show a media item in at least one layer. */
 export function mediaUsage(project: Project, mediaId: string): number {
-  return project.surfaces.filter((s) => s.mediaId === mediaId).length;
+  return project.surfaces.filter((s) => s.layers.some((l) => l.mediaId === mediaId)).length;
 }
 
-/** Removes a media item; surfaces that used it fall back to the test card. */
+/** Removes a media item; layers that used it fall back to the test card. */
 export function removeMedia(project: Project, mediaId: string): Project {
   if (mediaId === TESTCARD_ID) return project;
   return {
     ...project,
     media: project.media.filter((m) => m.id !== mediaId),
-    surfaces: project.surfaces.map((s) => (s.mediaId === mediaId ? { ...s, mediaId: TESTCARD_ID } : s)),
+    surfaces: project.surfaces.map((s) =>
+      s.layers.some((l) => l.mediaId === mediaId)
+        ? { ...s, layers: s.layers.map((l) => (l.mediaId === mediaId ? { ...l, mediaId: TESTCARD_ID } : l)) }
+        : s,
+    ),
   };
 }
 
@@ -246,6 +292,28 @@ function normalizeMasks(raw: unknown): Mask[] {
     }));
 }
 
+const clamp01 = (v: unknown, fallback: number) => Math.min(1, Math.max(0, Number.isFinite(v) ? Number(v) : fallback));
+
+/**
+ * Layers of a saved surface. Files from before layers existed have one media and input
+ * on the surface itself; they become a single layer.
+ */
+function normalizeLayers(raw: Record<string, unknown>, mediaIds: Set<string>): Layer[] | undefined {
+  const list = Array.isArray(raw.layers) ? raw.layers : [{ mediaId: raw.mediaId, input: raw.input, name: 'Layer 1' }];
+  const layers = list
+    .filter((l) => l && isQuad(l.input))
+    .map((l, i) => ({
+      id: typeof l.id === 'string' ? l.id : createId('layer'),
+      name: String(l.name ?? `Layer ${i + 1}`),
+      mediaId: mediaIds.has(l.mediaId) ? l.mediaId : TESTCARD_ID,
+      input: cloneQuad(l.input),
+      opacity: clamp01(l.opacity, 1),
+      blend: BLEND_MODES.includes(l.blend) ? l.blend : 'normal',
+      visible: l.visible !== false,
+    }));
+  return layers.length > 0 ? layers : undefined;
+}
+
 function normalizeReference(raw: unknown): ReferenceImage | undefined {
   if (typeof raw !== 'object' || raw === null) return undefined;
   const r = raw as Partial<ReferenceImage>;
@@ -256,7 +324,7 @@ function normalizeReference(raw: unknown): ReferenceImage | undefined {
     width: Number(r.width) || 1,
     height: Number(r.height) || 1,
     quad: cloneQuad(r.quad),
-    opacity: Math.min(1, Math.max(0, Number.isFinite(r.opacity) ? Number(r.opacity) : 0.5)),
+    opacity: clamp01(r.opacity, 0.5),
     visible: r.visible !== false,
   };
 }
@@ -286,19 +354,22 @@ export function normalizeProject(raw: unknown): Project {
     }));
   media.unshift(testcardMedia());
   const mediaIds = new Set(media.map((m) => m.id));
-  const surfaces: Surface[] = (Array.isArray(r.surfaces) ? r.surfaces : [])
-    .filter((s) => s && typeof s.id === 'string' && isQuad(s.input) && isQuad(s.output))
-    .map((s, i) => ({
+  const surfaces: Surface[] = [];
+  for (const [i, s] of (Array.isArray(r.surfaces) ? r.surfaces : []).entries()) {
+    if (!s || typeof s.id !== 'string' || !isQuad(s.output)) continue;
+    const layers = normalizeLayers(s as unknown as Record<string, unknown>, mediaIds);
+    if (!layers) continue;
+    surfaces.push({
       id: s.id,
       name: String(s.name ?? `Quad ${i + 1}`),
       type: 'quad',
-      mediaId: mediaIds.has(s.mediaId) ? s.mediaId : TESTCARD_ID,
+      layers,
       visible: s.visible !== false,
-      opacity: Math.min(1, Math.max(0, Number.isFinite(s.opacity) ? s.opacity : 1)),
-      input: cloneQuad(s.input),
+      opacity: clamp01(s.opacity, 1),
       output: cloneQuad(s.output),
       mesh: normalizeMesh(s.mesh),
       masks: normalizeMasks(s.masks),
-    }));
+    });
+  }
   return { version: PROJECT_VERSION, output, media, surfaces };
 }

@@ -1,12 +1,16 @@
 import { useEffect, useRef } from 'react';
-import { updateSurface, type Quad } from '../core/model';
-import { inputMedia, mediaSize, moveInput } from './actions';
+import { activeLayer, findSurface, updateLayer, type Quad } from '../core/model';
+import { inputMedia, mediaSize, moveInput, selectedLayer } from './actions';
 import { editorStore, pool, useEditor, useRuntime } from './context';
 import { QuadOverlay } from './QuadOverlay';
 import { Transport } from './Transport';
 import { Viewport } from './Viewport';
 
-/** The media of the selected surface, with each surface's input region on top of it. */
+// Overlay items are layers, so their ids carry both the surface and the layer.
+const itemId = (surfaceId: string, layerId: string) => `${surfaceId}/${layerId}`;
+const splitId = (id: string) => id.split('/') as [string, string];
+
+/** The media of the selected layer, with the input region of every layer that shows it on top. */
 export function InputView() {
   const project = useEditor((s) => s.project);
   const selection = useEditor((s) => s.selection);
@@ -40,9 +44,18 @@ export function InputView() {
   }, [media.id, width, height]);
 
   const toPixels = (q: Quad): Quad => q.map((p) => ({ x: p.x * width, y: p.y * height })) as Quad;
-  const items = project.surfaces
-    .filter((s) => s.mediaId === media.id)
-    .map((s) => ({ id: s.id, name: s.name, quad: toPixels(s.input), hidden: !s.visible }));
+  const items = project.surfaces.flatMap((s) =>
+    s.layers
+      .filter((l) => l.mediaId === media.id)
+      .map((l) => ({
+        id: itemId(s.id, l.id),
+        name: s.layers.length > 1 ? `${s.name} · ${l.name}` : s.name,
+        quad: toPixels(l.input),
+        hidden: !s.visible || !l.visible,
+      })),
+  );
+  const layer = selectedLayer(project, selection);
+  const selectedId = selection.surfaceId && layer ? itemId(selection.surfaceId, layer.id) : null;
 
   return (
     <section className="view" onPointerDownCapture={() => editorStore.getState().setActiveView('input')}>
@@ -50,6 +63,7 @@ export function InputView() {
         <span className="view-title">Input</span>
         <span className="view-meta">
           {media.name} · {width}×{height}
+          {layer && findSurface(project, selection.surfaceId)!.layers.length > 1 && ` · ${layer.name}`}
           {media.kind === 'capture' && status === 'ready' && <em className="live"> · LIVE</em>}
           {status && status !== 'ready' && <em className="warn"> · 연결 안 됨</em>}
         </span>
@@ -61,18 +75,21 @@ export function InputView() {
           width={width}
           height={height}
           items={items}
-          selectedId={selection.surfaceId}
+          selectedId={selectedId}
           selectedCorner={selection.corner}
-          onSelect={(surfaceId, corner) => {
-            // Clicking empty media keeps the surface selected so its media stays in view.
-            if (surfaceId) editorStore.getState().select({ surfaceId, corner });
-            else editorStore.getState().select({ corner: null });
+          onSelect={(id, corner) => {
+            // Clicking empty media keeps the layer selected so its media stays in view.
+            if (!id) return editorStore.getState().select({ corner: null });
+            const [surfaceId, layerId] = splitId(id);
+            editorStore.getState().select({ surfaceId, layerId, corner });
           }}
           onDrag={(id, corner, _base, d) => {
-            const base = editorStore.getState().gestureBase?.surfaces.find((s) => s.id === id)?.input;
-            if (!base) return;
-            const input = moveInput(base, corner, d.x / width, d.y / height);
-            editorStore.getState().apply((p) => updateSurface(p, id, { input }), { record: false });
+            const [surfaceId, layerId] = splitId(id);
+            const base = editorStore.getState().gestureBase;
+            const surface = base && findSurface(base, surfaceId);
+            if (!surface) return;
+            const input = moveInput(activeLayer(surface, layerId).input, corner, d.x / width, d.y / height);
+            editorStore.getState().apply((p) => updateLayer(p, surfaceId, layerId, { input }), { record: false });
           }}
         />
       </Viewport>

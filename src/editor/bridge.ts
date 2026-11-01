@@ -1,5 +1,6 @@
 import type { Project } from '../core/model';
 import { SyncChannel } from '../core/sync';
+import { desktop } from '../desktop';
 import { saveAutosave } from '../project/io';
 import { editorStore, pool, runtimeStore } from './context';
 import { followLocal, onTransportChange, snapshot } from './playback';
@@ -44,22 +45,28 @@ export function startBridge(): () => void {
   });
   const unsubTransport = onTransportChange(postTransport);
 
+  // Output window status: from the window itself on the web; in the desktop app the
+  // main process owns that window and reports it.
   const unsubSync = sync.on((msg) => {
     switch (msg.type) {
       case 'hello':
         postProject(editorStore.getState().project);
         postFiles(true);
         postTransport();
-        runtimeStore.setState({ output: runtimeStore.getState().output ?? { fullscreen: false, width: 0, height: 0 } });
+        if (!desktop) runtimeStore.setState({ output: runtimeStore.getState().output ?? { fullscreen: false, width: 0, height: 0 } });
         break;
       case 'output-status':
-        runtimeStore.setState({ output: { fullscreen: msg.fullscreen, width: msg.width, height: msg.height } });
+        if (!desktop) runtimeStore.setState({ output: { fullscreen: msg.fullscreen, width: msg.width, height: msg.height } });
         break;
       case 'output-closed':
-        runtimeStore.setState({ output: null });
+        if (!desktop) runtimeStore.setState({ output: null });
         break;
     }
   });
+  const onDesktopStatus = (s: { open: boolean; fullscreen: boolean; width: number; height: number }) =>
+    runtimeStore.setState({ output: s.open ? { fullscreen: s.fullscreen, width: s.width, height: s.height } : null });
+  const unsubDesktop = desktop?.output.onStatus(onDesktopStatus);
+  void desktop?.output.status().then(onDesktopStatus);
 
   // An output window may already be open (e.g. the editor was reloaded): announce ourselves.
   sync.post({ type: 'controller-hello' });
@@ -78,6 +85,7 @@ export function startBridge(): () => void {
     unsubPool();
     unsubTransport();
     unsubSync();
+    unsubDesktop?.();
     clearInterval(clock);
     window.removeEventListener('beforeunload', flush);
     sync.close();
