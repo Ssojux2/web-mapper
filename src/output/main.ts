@@ -130,20 +130,26 @@ function frame(): void {
 requestAnimationFrame(frame);
 
 // Web: fullscreen needs a user gesture inside this window, a click or the F key.
-// Desktop app: the window itself is made fullscreen on its display by the main process.
+// Desktop app: the main process makes the window itself fullscreen on the display it is
+// on. A click only focuses the window so it can be dragged and resized freely;
+// double-click or F switches between window and fullscreen, Esc returns to a window.
 let desktopFullscreen = false;
 const isFullscreen = () => (desktop ? desktopFullscreen : !!document.fullscreenElement);
 
 function toggleFullscreen(): void {
-  if (desktop) void desktop.output.toggleFullscreen();
+  if (desktop) void desktop.output.setFullscreen();
   else if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
   else document.documentElement.requestFullscreen().catch(() => {});
 }
 document.addEventListener('click', () => {
-  if (!isFullscreen()) toggleFullscreen();
+  if (!desktop && !isFullscreen()) toggleFullscreen();
+});
+document.addEventListener('dblclick', () => {
+  if (desktop) toggleFullscreen();
 });
 document.addEventListener('keydown', (e) => {
   if (e.key === 'f' || e.key === 'F') toggleFullscreen();
+  if (e.key === 'Escape' && desktop && desktopFullscreen) void desktop.output.setFullscreen(false);
 });
 
 function reportStatus(): void {
@@ -166,7 +172,7 @@ function updateHint(): void {
   hint.innerHTML = !connected
     ? '<b>컨트롤러 연결 대기 중…</b><span>편집기 창에서 “출력 창 열기”를 누르세요</span>'
     : desktop
-      ? '<b>클릭하면 전체화면 (F)</b><span>화면 선택과 닫기는 편집기의 Output 탭에서 합니다 · 마우스를 멈추면 안내가 사라집니다</span>'
+      ? '<b>더블클릭 또는 F: 전체화면 ↔ 창</b><span>창은 끌어서 다른 화면으로 옮기거나 크기를 바꿀 수 있습니다 · Esc: 창으로 · 마우스를 멈추면 안내가 사라집니다</span>'
       : '<b>클릭하면 전체화면 (F)</b><span>이 창을 프로젝터 화면으로 옮긴 뒤 누르세요 · 마우스를 멈추면 안내가 사라집니다</span>';
   if (captureUnavailable) {
     hint.innerHTML += '<span class="warn">화면 캡처는 편집기의 “출력 창 열기”로 연 창에서만 보입니다</span>';

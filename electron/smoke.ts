@@ -1,7 +1,7 @@
-import { app, type BrowserWindow, type WebPreferences } from 'electron';
+import { app, screen, type BrowserWindow, type WebPreferences } from 'electron';
 import { writeFileSync } from 'node:fs';
 import { listSources, screenPermission } from './capture';
-import { closeOutput, openOutput, outputStatus, outputWindow } from './output-window';
+import { closeOutput, onDisplaysChanged, openOutput, outputStatus, outputWindow, setOutputFullscreen } from './output-window';
 
 // `--smoke-test[=result.json]`: drives the real app through its main paths, writes a JSON
 // report and exits 0 (all passed) or 1. Used on the packaged app locally and in CI.
@@ -109,6 +109,65 @@ export async function runSmokeTest(
     const status = await until(() => (outputStatus().fullscreen ? outputStatus() : null), 10_000, 'fullscreen');
     const connected = await until(() => js<boolean>(editor, '!!window.__mapper.runtimeStore.getState().output'), 10_000, 'editor sees output');
     return { ok: status.open && connected, detail: status };
+  });
+
+  // Window ↔ fullscreen, free moving/resizing, following the display it is moved to,
+  // and refitting a fullscreen output after its display changed.
+  await check('output-modes', async () => {
+    const out = outputWindow();
+    if (!out) return { ok: false, detail: 'no output window' };
+    const home = screen.getDisplayMatching(out.getBounds());
+    setOutputFullscreen(false);
+    await until(() => !outputStatus().fullscreen, 5_000, 'leave fullscreen');
+    await sleep(500);
+    const windowed = out.getBounds();
+    const free = out.isMovable() && out.isResizable() && windowed.width < home.bounds.width;
+
+    const rect = { x: home.workArea.x + 40, y: home.workArea.y + 40, width: 640, height: 360 };
+    out.setBounds(rect);
+    const viewport = await until(async () => {
+      const v = await js<{ w: number; h: number; cw: number; ch: number }>(
+        out,
+        `(() => { const r = document.getElementById('out').getBoundingClientRect(); return { w: innerWidth, h: innerHeight, cw: r.width, ch: r.height }; })()`,
+      );
+      return Math.abs(v.w - out.getContentBounds().width) <= 1 && v.cw === v.w && v.ch === v.h ? v : null;
+    }, 5_000, 'canvas follows the window size');
+
+    // With a second display: drag the window there; the editor's display list follows.
+    const other = screen.getAllDisplays().find((d) => d.id !== home.id);
+    let followed: unknown = 'single display';
+    if (other) {
+      out.setBounds({ x: other.workArea.x + 40, y: other.workArea.y + 40, width: 640, height: 360 });
+      await until(() => outputStatus().displayId === other.id, 5_000, 'moved to other display');
+      followed = await until(
+        () => js<number | null>(editor, `(() => { const r = window.__mapper.runtimeStore.getState(); const s = r.screens[r.screenIndex]; return s && s.displayId === ${other.id} ? s.displayId : null; })()`),
+        5_000,
+        'editor follows the display',
+      );
+    }
+
+    setOutputFullscreen(true);
+    const target = screen.getDisplayMatching(out.getBounds());
+    const filled = await until(() => {
+      const b = out.getBounds();
+      return outputStatus().fullscreen && b.width === target.bounds.width && b.height === target.bounds.height ? b : null;
+    }, 5_000, 'fullscreen fills the display it is on');
+
+    // A stale fullscreen frame (as after a resolution change) is refitted.
+    out.setBounds({ ...target.bounds, width: Math.round(target.bounds.width / 2) });
+    onDisplaysChanged();
+    const refitted = await until(() => {
+      const b = out.getBounds();
+      return outputStatus().fullscreen && b.width === target.bounds.width && b.height === target.bounds.height ? b : null;
+    }, 5_000, 'refit after display change');
+
+    // Fullscreen shows no title bar: the page gets the whole display.
+    const content = out.getContentBounds();
+    const frameless = content.height === refitted.height && content.width === refitted.width;
+
+    await openOutput(opts.pageUrl('output.html'), opts.webPreferences, home.id);
+    await until(() => outputStatus().displayId === home.id && outputStatus().fullscreen, 5_000, 'back on the first display');
+    return { ok: free && frameless, detail: { windowed, viewport, followed, filled, refitted, content } };
   });
 
   // What the projector shows: the test pattern, then a surface with two blended layers.

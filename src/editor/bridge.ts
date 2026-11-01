@@ -2,6 +2,7 @@ import type { Project } from '../core/model';
 import { SyncChannel } from '../core/sync';
 import { desktop } from '../desktop';
 import { saveAutosave } from '../project/io';
+import { loadScreens } from './actions';
 import { editorStore, pool, runtimeStore } from './context';
 import { followLocal, onTransportChange, snapshot } from './playback';
 
@@ -63,9 +64,23 @@ export function startBridge(): () => void {
         break;
     }
   });
-  const onDesktopStatus = (s: { open: boolean; fullscreen: boolean; width: number; height: number }) =>
-    runtimeStore.setState({ output: s.open ? { fullscreen: s.fullscreen, width: s.width, height: s.height } : null });
-  const unsubDesktop = desktop?.output.onStatus(onDesktopStatus);
+  // The display list follows the output window: re-read when it lands on another display
+  // or that display's resolution changed, and select the display it is on.
+  let lastDisplay = '';
+  const onDesktopStatus = async (s: { open: boolean; displayId?: number; fullscreen: boolean; width: number; height: number }) => {
+    const display = `${s.displayId}:${s.width}x${s.height}`;
+    if (s.open && display !== lastDisplay) {
+      lastDisplay = display;
+      await loadScreens(false);
+    }
+    const { screens, screenIndex } = runtimeStore.getState();
+    const onScreen = screens.findIndex((d) => d.displayId === s.displayId);
+    runtimeStore.setState({
+      output: s.open ? { fullscreen: s.fullscreen, width: s.width, height: s.height } : null,
+      screenIndex: s.open && onScreen >= 0 ? onScreen : screenIndex,
+    });
+  };
+  const unsubDesktop = desktop?.output.onStatus((st) => void onDesktopStatus(st));
   void desktop?.output.status().then(onDesktopStatus);
 
   // An output window may already be open (e.g. the editor was reloaded): announce ourselves.

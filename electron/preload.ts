@@ -11,7 +11,7 @@ const api: MapperDesktopApi = {
   output: {
     open: (displayId) => ipcRenderer.invoke(IPC.outputOpen, displayId),
     close: () => ipcRenderer.invoke(IPC.outputClose),
-    toggleFullscreen: () => ipcRenderer.invoke(IPC.outputToggleFullscreen),
+    setFullscreen: (on) => ipcRenderer.invoke(IPC.outputSetFullscreen, on),
     status: () => ipcRenderer.invoke(IPC.outputStatus),
     onStatus(cb) {
       const listener = (_e: Electron.IpcRendererEvent, status: DesktopOutputStatus) => cb(status);

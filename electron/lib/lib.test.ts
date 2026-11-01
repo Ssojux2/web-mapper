@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { CaptureRegistry } from './capture-registry';
-import { pickDisplay } from './displays';
+import { pickDisplay, windowedBounds } from './displays';
 import { resolveAppPath } from './paths';
 
 describe('resolveAppPath', () => {
@@ -26,6 +26,18 @@ describe('pickDisplay', () => {
     expect(pickDisplay([primary, projector], primary)).toBe(projector);
     expect(pickDisplay([primary, projector], primary, 99)).toBe(projector);
     expect(pickDisplay([primary], primary)).toBe(primary);
+  });
+});
+
+describe('windowedBounds', () => {
+  const work = { x: 1920, y: 25, width: 1920, height: 1055 };
+  it('centers a 16:9 window on the work area', () => {
+    expect(windowedBounds(work)).toEqual({ x: 1920 + 384, y: 25 + 204, width: 1152, height: 648 });
+  });
+  it('keeps a size that fits, and replaces one that fills or overflows the display', () => {
+    expect(windowedBounds(work, { x: 0, y: 0, width: 800, height: 600 })).toEqual({ x: 1920 + 560, y: 25 + 228, width: 800, height: 600 });
+    expect(windowedBounds(work, { x: 0, y: 0, width: 1920, height: 1080 }).width).toBe(1152);
+    expect(windowedBounds({ x: 0, y: 0, width: 1024, height: 300 })).toMatchObject({ width: 427, height: 240 });
   });
 });
 

@@ -39,7 +39,8 @@ export interface MapperDesktopApi {
     /** Opens (or moves) the output window, fullscreen on the display. */
     open(displayId?: number): Promise<void>;
     close(): Promise<void>;
-    toggleFullscreen(): Promise<void>;
+    /** Fullscreen on the display the window is on; without an argument it toggles. */
+    setFullscreen(on?: boolean): Promise<void>;
     status(): Promise<DesktopOutputStatus>;
     onStatus(cb: (status: DesktopOutputStatus) => void): () => void;
   };

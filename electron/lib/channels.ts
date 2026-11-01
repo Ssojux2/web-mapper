@@ -3,7 +3,7 @@ export const IPC = {
   displays: 'displays:list',
   outputOpen: 'output:open',
   outputClose: 'output:close',
-  outputToggleFullscreen: 'output:toggleFullscreen',
+  outputSetFullscreen: 'output:setFullscreen',
   outputStatus: 'output:status',
   captureSources: 'capture:sources',
   captureSelect: 'capture:select',

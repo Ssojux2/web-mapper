@@ -1,4 +1,4 @@
-import { isDesktop } from '../desktop';
+import { desktop, isDesktop } from '../desktop';
 import { closeOutputWindow, openOutputWindow, supportsScreenPlacement } from '../output/screens';
 import { NumberField } from './NumberField';
 import { fitReference, loadReference, loadScreens, restoreReference, setEditMode, setReference, updateReference } from './actions';
@@ -97,14 +97,23 @@ export function OutputPanel() {
         <button className="primary" onClick={open}>
           {status ? '출력 창 앞으로' : '출력 창 열기'}
         </button>
+        {status && isDesktop && (
+          <button onClick={() => void desktop!.output.setFullscreen(!status.fullscreen)}>{status.fullscreen ? '창으로' : '전체화면'}</button>
+        )}
         {status && <button onClick={closeOutputWindow}>닫기</button>}
       </div>
       <p className={`status-line${status ? ' ok' : ''}`}>
-        {status ? (status.fullscreen ? '● 출력 중 (전체화면)' : '● 연결됨 · 출력 창을 클릭하면 전체화면') : '○ 출력 창 없음'}
+        {status
+          ? status.fullscreen
+            ? '● 출력 중 (전체화면)'
+            : isDesktop
+              ? '● 창 모드 · 출력 창을 더블클릭하거나 F를 누르면 전체화면'
+              : '● 연결됨 · 출력 창을 클릭하면 전체화면'
+          : '○ 출력 창 없음'}
       </p>
       <p className="hint">
         {isDesktop
-          ? '출력 창은 고른 화면에 전체화면으로 열립니다. 화면을 바꾸려면 목록에서 고른 뒤 “출력 창 앞으로”를 누르세요. 안내문과 커서는 마우스를 멈추면 사라집니다.'
+          ? '출력 창은 고른 화면에 전체화면으로 열립니다. 창 모드에서는 끌어서 다른 화면으로 옮기거나 크기를 바꿀 수 있고, 전체화면은 창이 있는 화면을 채웁니다. 목록에서 다른 화면을 고르고 “출력 창 앞으로”를 눌러도 옮겨집니다. 해상도가 바뀌면 자동으로 다시 맞춥니다.'
           : '출력 창의 안내문과 커서는 마우스를 멈추면 사라집니다. 캡처를 쓸 때 탭을 공유하면 Chrome의 공유 바가 출력에도 보이니, ‘창’으로 공유하세요.'}
       </p>
 

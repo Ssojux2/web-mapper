@@ -7,7 +7,7 @@ import type { DisplayInfo } from '../src/desktop/api';
 import { forgetWindow, installDisplayMediaHandler, listSources, lookupSource, openScreenSettings, screenPermission, selectSource } from './capture';
 import { IPC } from './lib/channels';
 import { resolveAppPath } from './lib/paths';
-import { broadcastStatus, closeOutput, openOutput, outputStatus, toggleOutputFullscreen } from './output-window';
+import { closeOutput, onDisplaysChanged, openOutput, outputStatus, setOutputFullscreen } from './output-window';
 import { runSmokeTest } from './smoke';
 
 // Desktop shell around the web app. The pages are served from app://web-mapper/, a
@@ -91,7 +91,7 @@ function registerIpc(): void {
   });
   ipcMain.handle(IPC.outputOpen, (_e, displayId?: number) => openOutput(pageUrl('output.html'), webPreferences, displayId));
   ipcMain.handle(IPC.outputClose, () => closeOutput());
-  ipcMain.handle(IPC.outputToggleFullscreen, () => toggleOutputFullscreen());
+  ipcMain.handle(IPC.outputSetFullscreen, (_e, on?: boolean) => setOutputFullscreen(on));
   ipcMain.handle(IPC.outputStatus, () => outputStatus());
   ipcMain.handle(IPC.captureSources, () => listSources());
   ipcMain.handle(IPC.captureSelect, (e, mediaId: string, sourceId: string) => selectSource(e.sender.id, mediaId, sourceId));
@@ -120,7 +120,7 @@ app.whenReady().then(async () => {
   registerIpc();
   installMenu();
   for (const event of ['display-added', 'display-removed', 'display-metrics-changed'] as const) {
-    screen.on(event as 'display-added', broadcastStatus);
+    screen.on(event as 'display-added', onDisplaysChanged);
   }
 
   editor = createEditor();
