@@ -28,11 +28,24 @@ async function until<T>(fn: () => Promise<T | Falsy> | T | Falsy, ms: number, wh
 
 const js = <T>(w: BrowserWindow, code: string): Promise<T> => w.webContents.executeJavaScript(code, true);
 
-/** Saves what a window shows next to the report, e.g. result.editor.png. */
+/**
+ * Saves what a window shows next to the report, e.g. result.editor.png. Best effort:
+ * a window that has not painted yet cannot be captured (software GL on CI), so it
+ * retries and never fails a check.
+ */
 async function screenshot(w: BrowserWindow, outFile: string, name: string): Promise<string> {
   const file = outFile.replace(/\.json$/, '') + `.${name}.png`;
-  writeFileSync(file, (await w.webContents.capturePage()).toPNG());
-  return file;
+  let error: unknown;
+  for (let i = 0; i < 5; i++) {
+    try {
+      writeFileSync(file, (await w.webContents.capturePage()).toPNG());
+      return file;
+    } catch (err) {
+      error = err;
+      await sleep(500);
+    }
+  }
+  return `screenshot failed: ${String(error)}`;
 }
 
 export async function runSmokeTest(
