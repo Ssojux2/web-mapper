@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { distance, pointInQuad, quadCenter, setCorner, translateQuad } from '../core/geometry';
 import { isMeshCorner, meshControlPoints, pointInPolygon, segmentDistance, surfaceGeometry, surfacePoint } from '../core/mesh';
 import { findSurface, translateSurface, updateMask, updateSurface, type Mask, type Point, type Surface } from '../core/model';
-import { addLayer, addMask, assignMedia, insertMaskPoint, updateReference } from './actions';
+import { addLayer, addMask, addMediaLayer, assignMedia, insertMaskPoint, updateReference } from './actions';
 import { editorStore, useEditor, useRuntime } from './context';
 import { contentPoint, useViewScale } from './Viewport';
 
@@ -259,6 +259,8 @@ export function OutputOverlay({ width, height }: { width: number; height: number
     } else if (hit) {
       assignMedia(hit.id, mediaId);
       store().select({ surfaceId: hit.id });
+    } else {
+      addMediaLayer(mediaId, toContent(e));
     }
   };
 

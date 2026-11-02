@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { activeLayer, createLayer, createMesh, createProject, createSurface, mediaUsage, moveLayerInSurface, removeMedia, TESTCARD_ID, updateSurface } from './model';
+import { activeLayer, createLayer, createMediaSurface, createMesh, createProject, createSurface, mediaUsage, moveLayerInSurface, removeMedia, TESTCARD_ID, updateSurface } from './model';
 import { createEditorStore } from './store';
 import { translateQuad } from './geometry';
 
@@ -139,5 +139,45 @@ describe('surface layers', () => {
     store.getState().select({ surfaceId: id, layerId: top.id });
     store.getState().undo(); // removes the added layer
     expect(store.getState().selection.layerId).toBeNull();
+  });
+});
+
+describe('media surfaces', () => {
+  const capture = { id: 'cap', kind: 'capture' as const, name: '창 1', width: 1600, height: 1000, loop: true };
+
+  it('names the surface after the media and keeps its aspect', () => {
+    const p = createProject();
+    const s = createMediaSurface(p, capture);
+    const [tl, , br] = s.output;
+    expect(s.name).toBe('창 1');
+    expect(s.layers.map((l) => l.mediaId)).toEqual(['cap']);
+    expect((br.x - tl.x) / (br.y - tl.y)).toBeCloseTo(1.6);
+  });
+
+  it('steps new surfaces apart and keeps them on the output', () => {
+    let p = createProject();
+    const corners: number[] = [];
+    const middle = createSurface(p, capture).output[0].x;
+    for (let i = 0; i < 6; i++) {
+      const s = createMediaSurface(p, capture);
+      corners.push(s.output[0].x);
+      for (const q of s.output) {
+        expect(q.x).toBeGreaterThanOrEqual(0);
+        expect(q.x).toBeLessThanOrEqual(p.output.width);
+        expect(q.y).toBeGreaterThanOrEqual(0);
+        expect(q.y).toBeLessThanOrEqual(p.output.height);
+      }
+      p = { ...p, surfaces: [...p.surfaces, s] };
+    }
+    expect(new Set(corners).size).toBe(6);
+    expect(corners).not.toContain(middle);
+  });
+
+  it('centers on a drop point, clamped to the output', () => {
+    const p = createProject();
+    const s = createMediaSurface(p, capture, { x: 1900, y: 20 });
+    const [tl, , br] = s.output;
+    expect(br.x).toBeCloseTo(1920);
+    expect(tl.y).toBeCloseTo(0);
   });
 });

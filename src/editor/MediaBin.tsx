@@ -1,5 +1,5 @@
 import { mediaUsage, TESTCARD_ID } from '../core/model';
-import { addCapture, addLayer, addMediaFiles, assignMedia, deleteMedia, relink, restoreAllMedia } from './actions';
+import { addCapture, addLayer, addMediaFiles, addMediaLayer, assignMedia, deleteMedia, relink, restoreAllMedia } from './actions';
 import { editorStore, useEditor, useRuntime, type MediaStatus } from './context';
 import { MEDIA_DRAG_TYPE } from './OutputOverlay';
 import { isDesktop } from '../desktop';
@@ -44,18 +44,25 @@ export function MediaBin() {
           + 창/화면 캡처
         </button>
         <button
-          disabled={!selection.mediaId || !selection.surfaceId}
-          title="선택한 미디어를 선택한 서피스에 적용 (더블클릭도 가능)"
-          onClick={() => selection.mediaId && selection.surfaceId && assignMedia(selection.surfaceId, selection.mediaId)}
+          disabled={!selection.mediaId}
+          title="선택한 미디어를 출력에 새 레이어로 하나 더 올립니다 (더블클릭도 가능)"
+          onClick={() => selection.mediaId && addMediaLayer(selection.mediaId)}
         >
-          선택한 서피스에 적용
+          + 출력 레이어
         </button>
         <button
           disabled={!selection.mediaId || !selection.surfaceId}
-          title="선택한 미디어를 선택한 서피스의 새 레이어로 겹칩니다 (Output 뷰에 Shift를 누른 채 놓아도 됩니다)"
+          title="선택한 레이어(서피스)의 미디어를 이것으로 바꿉니다"
+          onClick={() => selection.mediaId && selection.surfaceId && assignMedia(selection.surfaceId, selection.mediaId)}
+        >
+          선택한 레이어에 적용
+        </button>
+        <button
+          disabled={!selection.mediaId || !selection.surfaceId}
+          title="선택한 미디어를 선택한 서피스 안에 겹쳐 블렌드합니다 (Output 뷰의 서피스 위에 Shift를 누른 채 놓아도 됩니다)"
           onClick={() => selection.mediaId && selection.surfaceId && addLayer(selection.surfaceId, selection.mediaId)}
         >
-          레이어로 겹치기
+          서피스 안에 겹치기
         </button>
       </div>
       <ul className="list">
@@ -72,7 +79,7 @@ export function MediaBin() {
                 e.dataTransfer.effectAllowed = 'link';
               }}
               onClick={() => editorStore.getState().select({ mediaId: m.id })}
-              onDoubleClick={() => selection.surfaceId && assignMedia(selection.surfaceId, m.id)}
+              onDoubleClick={() => addMediaLayer(m.id)}
             >
               <span className="kind">{KIND_ICON[m.kind]}</span>
               <span className="name" title={m.name}>
@@ -108,7 +115,10 @@ export function MediaBin() {
           );
         })}
       </ul>
-      <p className="hint">파일을 여기로 끌어다 놓아도 추가됩니다. 미디어를 Output 뷰의 서피스 위에 놓으면 선택한 레이어에 적용되고, Shift를 누른 채 놓으면 새 레이어로 겹칩니다.</p>
+      <p className="hint">
+        추가한 미디어와 캡처는 각각 출력 레이어가 되어 동시에 나옵니다. Output 뷰의 레이어 패널에서 켜고 끄기, 불투명도, 순서를 조절하세요. 미디어를 Output 뷰의 빈 곳에 놓으면 그 자리에 새
+        레이어가 생기고, 레이어 위에 놓으면 그 레이어의 미디어가 바뀝니다(Shift: 그 안에 겹치기).
+      </p>
       <p className="hint">
         {isDesktop
           ? '캡처할 창이나 화면을 고르면 출력 창에도 같은 영상이 나오고, 공유 표시는 나타나지 않습니다. 창 테두리는 Input 뷰에서 잘라 내세요. 앱을 다시 열면 “다시 선택”이 필요합니다.'

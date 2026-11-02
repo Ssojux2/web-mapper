@@ -70,7 +70,7 @@ function LayerSection({ surface }: { surface: Surface }) {
   const select = (id: string) => editorStore.getState().select({ layerId: id, corner: null });
   return (
     <div className="inspector-section">
-      <h4>레이어</h4>
+      <h4>겹친 미디어</h4>
       <ul className="list layer-list">
         {surface.layers
           .map((l) => (
@@ -92,8 +92,8 @@ function LayerSection({ surface }: { surface: Surface }) {
           .reverse()}
       </ul>
       <div className="field-row">
-        <button onClick={() => addLayer(surface.id)} title="Media Bin에서 고른 미디어(없으면 Test Card)로 맨 위에 레이어를 추가합니다">
-          + 레이어
+        <button onClick={() => addLayer(surface.id)} title="Media Bin에서 고른 미디어(없으면 Test Card)를 이 서피스 안 맨 위에 겹칩니다">
+          + 겹치기
         </button>
         <button className="icon" title="위로" disabled={index === surface.layers.length - 1} onClick={() => moveSurfaceLayer(surface.id, layer.id, 1)}>
           ▲
@@ -101,7 +101,7 @@ function LayerSection({ surface }: { surface: Surface }) {
         <button className="icon" title="아래로" disabled={index === 0} onClick={() => moveSurfaceLayer(surface.id, layer.id, -1)}>
           ▼
         </button>
-        <button className="icon" title="레이어 삭제" disabled={surface.layers.length < 2} onClick={() => removeLayer(surface.id, layer.id)}>
+        <button className="icon" title="겹친 미디어 삭제" disabled={surface.layers.length < 2} onClick={() => removeLayer(surface.id, layer.id)}>
           ✕
         </button>
       </div>
@@ -140,7 +140,7 @@ function LayerSection({ surface }: { surface: Surface }) {
         </select>
       </label>
       <p className="hint">
-        위에 있는 레이어가 앞에 그려집니다. 레이어마다 Input 뷰에서 미디어의 보일 영역을 따로 정하고, 마스크와 메시는 서피스 전체에 함께 적용됩니다. 맨 아래 레이어는 블렌드 없이 깔립니다.
+        한 서피스 안에서 미디어를 겹쳐 블렌드합니다. 위에 있는 것이 앞에 그려지고, 각각 Input 뷰에서 미디어의 보일 영역을 따로 정하고, 마스크와 메시는 서피스 전체에 함께 적용됩니다. 맨 아래 것은 블렌드 없이 깔립니다.
       </p>
     </div>
   );

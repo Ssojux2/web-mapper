@@ -13,13 +13,15 @@ interface Props {
   children: ReactNode;
   /** Pointer down on the empty area around the content. */
   onBackgroundPointerDown?(): void;
+  /** Panels floating over the view, outside the pan/zoom transform. */
+  controls?: ReactNode;
 }
 
 /**
  * Pan/zoom container. Wheel or two-finger scroll pans, Ctrl/Cmd+wheel or pinch zooms
  * around the cursor, middle- or Alt+drag pans, Cmd/Ctrl+0 or the badge fits the view.
  */
-export function Viewport({ contentWidth, contentHeight, children, onBackgroundPointerDown }: Props) {
+export function Viewport({ contentWidth, contentHeight, children, onBackgroundPointerDown, controls }: Props) {
   const outer = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState({ w: 1, h: 1 });
   const [view, setView] = useState({ zoom: 1, x: 0, y: 0 });
@@ -48,6 +50,8 @@ export function Viewport({ contentWidth, contentHeight, children, onBackgroundPo
   useEffect(() => {
     const el = outer.current!;
     const onWheel = (e: WheelEvent) => {
+      // Panels floating over the view scroll themselves.
+      if ((e.target as Element).closest('.viewport-controls')) return;
       e.preventDefault();
       const l = latest.current;
       if (e.ctrlKey || e.metaKey) {
@@ -107,6 +111,7 @@ export function Viewport({ contentWidth, contentHeight, children, onBackgroundPo
       <button className="zoom-badge" title="화면에 맞추기 (Cmd/Ctrl+0)" onClick={() => setView({ zoom: 1, x: 0, y: 0 })}>
         {Math.round(scale * 100)}%
       </button>
+      {controls}
     </div>
   );
 }

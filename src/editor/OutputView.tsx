@@ -4,6 +4,7 @@ import { findSurface } from '../core/model';
 import { Renderer } from '../render/renderer';
 import { enableMesh, restoreReference, setEditMode } from './actions';
 import { editorStore, pool, toast, useEditor, useRuntime, type EditMode } from './context';
+import { OutputLayers } from './OutputLayers';
 import { OutputOverlay } from './OutputOverlay';
 import { Viewport } from './Viewport';
 
@@ -126,6 +127,7 @@ export function OutputView() {
         onBackgroundPointerDown={() => {
           if (mode !== 'mask' && mode !== 'reference') editorStore.getState().select({ surfaceId: null });
         }}
+        controls={<OutputLayers />}
       >
         <canvas ref={canvas} className="view-canvas" style={{ width, height }} />
         <ReferenceImage />

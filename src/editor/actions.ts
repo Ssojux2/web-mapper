@@ -1,4 +1,4 @@
-import { activeLayer, cloneQuad, createId, createLayer, createMesh, createProject, createSurface, findMedia, findSurface, FULL_INPUT, moveLayerInSurface, moveSurface, rectQuad, removeMedia, TESTCARD_ID, translateSurface, updateLayer, updateMask, updateMedia, updateSurface, type Layer, type Mask, type Media, type Point, type Project, type Quad, type ReferenceImage, type Surface } from '../core/model';
+import { activeLayer, cloneQuad, createId, createLayer, createMediaSurface, createMesh, createProject, createSurface, findMedia, findSurface, FULL_INPUT, moveLayerInSurface, moveSurface, rectQuad, removeMedia, TESTCARD_ID, translateSurface, updateLayer, updateMask, updateMedia, updateSurface, type Layer, type Mask, type Media, type Point, type Project, type Quad, type ReferenceImage, type Surface } from '../core/model';
 import { setCorner, translateQuad } from '../core/geometry';
 import { isMeshCorner, resampleMesh, surfaceGeometry } from '../core/mesh';
 import { importMedia, loadRememberedFile, pickImageFile, pickMediaFiles, relinkMedia, rememberFile, restoreMedia, type PickedFile } from '../media/library';
@@ -53,6 +53,25 @@ export function addQuad(): void {
   const surface = createSurface(project, media);
   state().apply((p) => ({ ...p, surfaces: [...p.surfaces, surface] }));
   state().select({ surfaceId: surface.id, corner: null });
+}
+
+/** Puts a media item on the output as a new layer of its own (at `center`, if given) and selects it. */
+export function addMediaLayer(mediaId: string, center?: Point): void {
+  const media = findMedia(state().project, mediaId);
+  if (!media) return;
+  const surface = createMediaSurface(state().project, media, center);
+  state().apply((p) => ({ ...p, surfaces: [...p.surfaces, surface] }));
+  state().select({ surfaceId: surface.id, mediaId, corner: null });
+}
+
+/** Adds a new media item and its own output layer as one undo step. */
+function addMediaWithLayer(media: Media): void {
+  state().apply((p) => {
+    const withMedia = { ...p, media: [...p.media, media] };
+    return { ...withMedia, surfaces: [...p.surfaces, createMediaSurface(withMedia, media)] };
+  });
+  const surface = state().project.surfaces.at(-1)!;
+  state().select({ surfaceId: surface.id, mediaId: media.id, corner: null });
 }
 
 export function duplicateSelected(): void {
@@ -241,22 +260,19 @@ export async function loadScreens(interactive: boolean): Promise<void> {
 
 export async function addMediaFiles(files?: PickedFile[]): Promise<void> {
   const picked = files ?? (await pickMediaFiles(true));
-  let last: Media | null = null;
+  let added = 0;
   for (const p of picked) {
     try {
       const media = await importMedia(pool, p);
       playback.reset(media.id);
       setMediaStatus(media.id, 'ready');
-      state().apply((proj) => ({ ...proj, media: [...proj.media, media] }));
-      last = media;
+      addMediaWithLayer(media);
+      added++;
     } catch (err) {
       toast(errorText(err), true);
     }
   }
-  if (last) {
-    state().select({ mediaId: last.id });
-    toast(`미디어 ${picked.length}개를 추가했습니다. 서피스에 끌어다 놓거나 “선택한 서피스에 적용”을 누르세요.`);
-  }
+  if (added) toast(`미디어 ${added}개를 출력 레이어로 추가했습니다. Output 뷰에서 끌어 옮기고 레이어 패널에서 켜고 끄세요.`);
 }
 
 export function deleteMedia(mediaId: string): void {
@@ -368,10 +384,9 @@ export async function addCapture(): Promise<void> {
     const n = state().project.media.filter((m) => m.name.startsWith(label)).length + 1;
     const name = `${label} ${n}`;
     const media: Media = { id, kind: 'capture', name, width: started.width, height: started.height, loop: true };
-    state().apply((p) => ({ ...p, media: [...p.media, media] }));
-    state().select({ mediaId: id });
+    addMediaWithLayer(media);
     if (isTabCapture(started.stream)) toast(TAB_CAPTURE_WARNING, true);
-    else toast('캡처를 추가했습니다. 서피스에 끌어다 놓고, Input 뷰에서 창 테두리를 잘라 영상 부분만 쓰세요.');
+    else toast(`${name}을(를) 출력 레이어로 추가했습니다. Input 뷰에서 창 테두리를 잘라 영상 부분만 쓰세요.`);
   } catch (err) {
     toast(errorText(err), true);
   }

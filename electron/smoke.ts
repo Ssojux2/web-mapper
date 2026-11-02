@@ -242,6 +242,53 @@ export async function runSmokeTest(
     return { ok: track.state === 'live', detail: { ...detail, track, output: 'live, then stopped' } };
   });
 
+  // Several captures play on the output at once, each as its own layer: the output has
+  // to capture every one of them again on its own, and stop them all when they go.
+  await check('multi-capture', async () => {
+    if (screenPermission() !== 'granted') return { ok: 'skipped', detail: { permission: screenPermission() } };
+    const sources = await listSources();
+    const screen = sources.find((s) => s.kind === 'screen');
+    if (!screen) return { ok: false, detail: { sources: sources.length } };
+    // A second, different source when there is one; else the same screen twice.
+    const picks = [screen, sources.find((s) => s.id !== screen.id) ?? screen, screen].map((s) => s.id);
+    const ids = picks.map((_, i) => `multi-${i}`);
+    const editorTracks = await js<string[]>(
+      editor,
+      `(async () => { const { pool, editorStore } = window.__mapper; const picks = ${JSON.stringify(picks)};
+        const streams = [];
+        const media = [];
+        for (const [i, source] of picks.entries()) {
+          await window.mapperDesktop.capture.select('multi-' + i, source);
+          const s = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+          streams.push(s);
+          media.push({ id: 'multi-' + i, kind: 'capture', name: 'multi ' + i, ...(await pool.setStream('multi-' + i, s)), loop: true });
+        }
+        editorStore.getState().apply((p) => {
+          let next = { ...p, media: [...p.media, ...media] };
+          for (const m of media) {
+            const base = next.surfaces[0];
+            const surface = { ...base, id: 'layer-' + m.id, name: m.name, layers: [{ ...base.layers[0], id: 'l-' + m.id, mediaId: m.id }] };
+            next = { ...next, surfaces: [...next.surfaces, surface] };
+          }
+          return next;
+        });
+        return streams.map((s) => s.getVideoTracks()[0].readyState); })()`,
+    );
+    const out = outputWindow();
+    if (!out) return { ok: false, detail: 'no output window' };
+    const states = `${JSON.stringify(ids)}.map((id) => window.__mapperOutput.pool.stream(id)?.getVideoTracks()[0]?.readyState ?? 'none')`;
+    await until(async () => (await js<string[]>(out, states)).every((x) => x === 'live'), 15_000, 'output plays every capture');
+    const distinct = await js<number>(out, `new Set(${JSON.stringify(ids)}.map((id) => window.__mapperOutput.pool.stream(id))).size`);
+    await js(
+      editor,
+      `(() => { const { pool, editorStore } = window.__mapper; const ids = ${JSON.stringify(ids)};
+        for (const id of ids) pool.stream(id)?.getTracks().forEach((t) => t.stop());
+        editorStore.getState().apply((p) => ({ ...p, media: p.media.filter((m) => !ids.includes(m.id)), surfaces: p.surfaces.filter((s) => !s.id.startsWith('layer-multi-')) })); })()`,
+    );
+    await until(async () => (await js<string[]>(out, states)).every((x) => x !== 'live'), 10_000, 'output stops every capture');
+    return { ok: editorTracks.every((x) => x === 'live') && distinct === ids.length, detail: { picks, editorTracks, outputStreams: distinct } };
+  });
+
   // A captured window that goes fullscreen is swapped for the screen it fills (macOS
   // captures fullscreen windows with a broken frame), in the editor and the output.
   await check('fullscreen-window-capture', async () => {

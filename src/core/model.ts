@@ -149,6 +149,25 @@ export function createSurface(project: Project, media: Media, name?: string): Su
   };
 }
 
+/**
+ * A surface that puts a media item on the output as its own layer, named after it.
+ * Centered on `center` when given, else stepped diagonally off the middle so that
+ * several new layers don't hide each other.
+ */
+export function createMediaSurface(project: Project, media: Media, center?: Point): Surface {
+  const surface = createSurface(project, media, media.name);
+  const { width: ow, height: oh } = project.output;
+  const [tl, , br] = surface.output;
+  const w = br.x - tl.x;
+  const h = br.y - tl.y;
+  // Never the exact middle, where a default quad sits.
+  const step = [1, 2, 3, -1, -2, -3][project.surfaces.length % 6];
+  const c = center ?? { x: ow / 2 + step * ow * 0.05, y: oh / 2 + step * oh * 0.05 };
+  const x = Math.min(Math.max(c.x - w / 2, 0), ow - w);
+  const y = Math.min(Math.max(c.y - h / 2, 0), oh - h);
+  return { ...surface, output: rectQuad(x, y, w, h) };
+}
+
 export function createLayer(mediaId: string, name: string): Layer {
   return { id: createId('layer'), name, mediaId, input: cloneQuad(FULL_INPUT), opacity: 1, blend: 'normal', visible: true };
 }

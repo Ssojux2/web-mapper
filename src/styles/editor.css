@@ -444,6 +444,77 @@ input[type='checkbox'] {
   background: rgba(20, 20, 24, 0.8);
 }
 
+.output-layers {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  width: min(330px, calc(100% - 16px));
+  max-height: calc(100% - 48px);
+  background: rgba(24, 24, 29, 0.94);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+  font-size: 12px;
+}
+.output-layers.closed {
+  width: auto;
+}
+.output-layers > header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 6px;
+  border-bottom: 1px solid var(--line);
+}
+.output-layers.closed > header {
+  border-bottom: 0;
+}
+.output-layers .title {
+  font-weight: 600;
+}
+.output-layers .meta {
+  flex: 1;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.output-layers .list {
+  overflow: auto;
+  padding: 4px;
+}
+.output-layers .row {
+  gap: 4px;
+  padding: 3px 4px;
+}
+.output-layers .kind {
+  width: 14px;
+  text-align: center;
+  color: var(--muted);
+}
+.output-layers input[type='range'] {
+  width: 64px;
+  flex-shrink: 0;
+}
+.output-layers .actions {
+  display: flex;
+  gap: 1px;
+}
+.output-layers .live {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 5px;
+  border-radius: 50%;
+  background: #e5484d;
+  vertical-align: middle;
+}
+.output-layers .empty {
+  padding: 8px;
+  color: var(--muted);
+}
+
 .quad-overlay {
   position: absolute;
   inset: 0;
